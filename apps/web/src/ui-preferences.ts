@@ -1,0 +1,193 @@
+import {
+  DEFAULT_CHAT_MODEL,
+  DEFAULT_CHAT_PROVIDER,
+  type ModelDescriptor,
+} from "@coding-agent-orchestrator/shared";
+
+export type ThemePreference = "system" | "dark" | "light";
+export type ResolvedTheme = "dark" | "light";
+
+export const DEFAULT_COMPLETION_NOTIFICATION_MINUTES = 2;
+
+export interface CompletionNotificationPreferences {
+  enabled: boolean;
+  minimumDurationMinutes: number;
+  disabledAgentIds: string[];
+}
+
+export interface UiPreferences {
+  theme: ThemePreference;
+  hiddenModelIds: string[];
+  defaultChatProvider: string;
+  defaultChatModelId: string;
+  sidebarWidth: number;
+  sidebarCollapsed: boolean;
+  orchestratorTerminalHeight: number;
+  completionNotifications: CompletionNotificationPreferences;
+}
+
+export const DEFAULT_SIDEBAR_WIDTH = 300;
+export const MIN_SIDEBAR_WIDTH = 260;
+export const MAX_SIDEBAR_WIDTH = 460;
+export const DEFAULT_ORCHESTRATOR_TERMINAL_HEIGHT = 300;
+export const MIN_ORCHESTRATOR_TERMINAL_HEIGHT = 180;
+export const MAX_ORCHESTRATOR_TERMINAL_HEIGHT = 720;
+
+export function createDefaultUiPreferences(): UiPreferences {
+  return {
+    theme: "system",
+    hiddenModelIds: [],
+    defaultChatProvider: DEFAULT_CHAT_PROVIDER,
+    defaultChatModelId: DEFAULT_CHAT_MODEL,
+    sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
+    sidebarCollapsed: false,
+    orchestratorTerminalHeight: DEFAULT_ORCHESTRATOR_TERMINAL_HEIGHT,
+    completionNotifications: createDefaultCompletionNotificationPreferences(),
+  };
+}
+
+export function normalizeUiPreferences(
+  raw?: Partial<UiPreferences> | null
+): UiPreferences {
+  const defaults = createDefaultUiPreferences();
+
+  return {
+    theme: isThemePreference(raw?.theme) ? raw.theme : defaults.theme,
+    hiddenModelIds: Array.isArray(raw?.hiddenModelIds)
+      ? [
+          ...new Set(
+            raw.hiddenModelIds.filter(
+              (value): value is string => typeof value === "string"
+            )
+          ),
+        ]
+      : defaults.hiddenModelIds,
+    defaultChatProvider:
+      typeof raw?.defaultChatProvider === "string" &&
+      raw.defaultChatProvider.trim().length > 0
+        ? raw.defaultChatProvider.trim()
+        : defaults.defaultChatProvider,
+    defaultChatModelId:
+      typeof raw?.defaultChatModelId === "string" &&
+      raw.defaultChatModelId.trim().length > 0
+        ? raw.defaultChatModelId.trim()
+        : defaults.defaultChatModelId,
+    sidebarWidth:
+      typeof raw?.sidebarWidth === "number"
+        ? clampSidebarWidth(raw.sidebarWidth)
+        : defaults.sidebarWidth,
+    sidebarCollapsed:
+      typeof raw?.sidebarCollapsed === "boolean"
+        ? raw.sidebarCollapsed
+        : defaults.sidebarCollapsed,
+    orchestratorTerminalHeight:
+      typeof raw?.orchestratorTerminalHeight === "number"
+        ? clampOrchestratorTerminalHeight(raw.orchestratorTerminalHeight)
+        : defaults.orchestratorTerminalHeight,
+    completionNotifications: normalizeCompletionNotificationPreferences(
+      raw?.completionNotifications
+    ),
+  };
+}
+
+export function clampSidebarWidth(width: number): number {
+  return Math.min(
+    MAX_SIDEBAR_WIDTH,
+    Math.max(MIN_SIDEBAR_WIDTH, Math.round(width))
+  );
+}
+
+export function clampOrchestratorTerminalHeight(height: number): number {
+  return Math.min(
+    MAX_ORCHESTRATOR_TERMINAL_HEIGHT,
+    Math.max(MIN_ORCHESTRATOR_TERMINAL_HEIGHT, Math.round(height))
+  );
+}
+
+export function resolveTheme(
+  preference: ThemePreference,
+  prefersDark: boolean
+): ResolvedTheme {
+  return preference === "system"
+    ? prefersDark
+      ? "dark"
+      : "light"
+    : preference;
+}
+
+export function getVisibleModels(
+  models: ModelDescriptor[],
+  hiddenModelIds: string[],
+  selectedModelId?: string
+): ModelDescriptor[] {
+  if (models.length === 0) {
+    return [];
+  }
+
+  const hiddenModelSet = new Set(hiddenModelIds);
+  const visibleModels = models.filter((model) => !hiddenModelSet.has(model.id));
+  if (
+    selectedModelId &&
+    !visibleModels.some((model) => model.id === selectedModelId)
+  ) {
+    const selectedModel = models.find((model) => model.id === selectedModelId);
+    if (selectedModel) {
+      return [...visibleModels, selectedModel];
+    }
+  }
+
+  return visibleModels.length > 0 ? visibleModels : models.slice(0, 1);
+}
+
+export function isLastVisibleModel(
+  models: ModelDescriptor[],
+  hiddenModelIds: string[],
+  modelId: string
+): boolean {
+  const visibleModels = models.filter(
+    (model) => !hiddenModelIds.includes(model.id)
+  );
+  return visibleModels.length === 1 && visibleModels[0]?.id === modelId;
+}
+
+function isThemePreference(value: unknown): value is ThemePreference {
+  return value === "system" || value === "dark" || value === "light";
+}
+
+export function createDefaultCompletionNotificationPreferences(): CompletionNotificationPreferences {
+  return {
+    enabled: true,
+    minimumDurationMinutes: DEFAULT_COMPLETION_NOTIFICATION_MINUTES,
+    disabledAgentIds: [],
+  };
+}
+
+export function normalizeCompletionNotificationPreferences(
+  raw?: Partial<CompletionNotificationPreferences> | null
+): CompletionNotificationPreferences {
+  const defaults = createDefaultCompletionNotificationPreferences();
+
+  return {
+    enabled: typeof raw?.enabled === "boolean" ? raw.enabled : defaults.enabled,
+    minimumDurationMinutes: normalizeMinimumDurationMinutes(
+      raw?.minimumDurationMinutes
+    ),
+    disabledAgentIds: Array.isArray(raw?.disabledAgentIds)
+      ? [
+          ...new Set(
+            raw.disabledAgentIds.filter(
+              (value): value is string => typeof value === "string"
+            )
+          ),
+        ]
+      : defaults.disabledAgentIds,
+  };
+}
+
+function normalizeMinimumDurationMinutes(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return DEFAULT_COMPLETION_NOTIFICATION_MINUTES;
+  }
+
+  return Math.max(1, Math.round(value));
+}

@@ -1,0 +1,2178 @@
+import { execFile as execFileCallback } from "node:child_process";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
+import type {
+  ChatSession,
+  OrchestratorJob,
+  OrchestratorSession,
+} from "@coding-agent-orchestrator/shared";
+import { resolveWorkspace } from "@coding-agent-orchestrator/store";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const storeMocks = vi.hoisted(() => ({
+  createOrchestratorJob: vi.fn(),
+  deleteOrchestratorJob: vi.fn(),
+  deleteOrchestratorSession: vi.fn(),
+  getOrchestratorSession: vi.fn(),
+  resetOrchestratorTerminalLog: vi.fn(),
+  updateOrchestratorJob: vi.fn(),
+  updateOrchestratorSession: vi.fn(),
+  writeOrchestratorJobCompletion: vi.fn(),
+}));
+
+vi.mock("@coding-agent-orchestrator/store", async () => {
+  const actual = await vi.importActual<
+    typeof import("@coding-agent-orchestrator/store")
+  >("@coding-agent-orchestrator/store");
+  return {
+    ...actual,
+    createOrchestratorJob: storeMocks.createOrchestratorJob,
+    deleteOrchestratorJob: storeMocks.deleteOrchestratorJob,
+    deleteOrchestratorSession: storeMocks.deleteOrchestratorSession,
+    getOrchestratorSession: storeMocks.getOrchestratorSession,
+    resetOrchestratorTerminalLog: storeMocks.resetOrchestratorTerminalLog,
+    updateOrchestratorJob: storeMocks.updateOrchestratorJob,
+    updateOrchestratorSession: storeMocks.updateOrchestratorSession,
+    writeOrchestratorJobCompletion: storeMocks.writeOrchestratorJobCompletion,
+  };
+});
+
+import {
+  buildCopilotCommand,
+  buildDelegationShellScript,
+  buildMemoryAnalysisPrompt,
+  buildMemoryAnalysisRuntimeConfig,
+  DEFAULT_MEMORY_ANALYSIS_MODEL,
+  deriveSessionStatus,
+  extractCopilotRateLimitWaitSeconds,
+  isMemorySkillName,
+  parseMemoryAnalysisMarkdown,
+  resolveMemoryAnalysisModel,
+  shouldMaterializePrompt,
+  TmuxOrchestratorService,
+} from "./orchestrator.js";
+
+const tempRoots: string[] = [];
+const execFile = promisify(execFileCallback);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+afterEach(async () => {
+  await Promise.all(
+    tempRoots
+      .splice(0)
+      .map((root) => rm(root, { recursive: true, force: true }))
+  );
+});
+
+async function createTempJobDirectory(): Promise<string> {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "coding-agent-orchestrator-orch-runtime-")
+  );
+  tempRoots.push(root);
+  return root;
+}
+
+async function createTempWorkspaceRoot(): Promise<string> {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "coding-agent-orchestrator-orch-workspace-")
+  );
+  tempRoots.push(root);
+  return root;
+}
+
+beforeEach(() => {
+  storeMocks.createOrchestratorJob.mockReset();
+  storeMocks.getOrchestratorSession.mockReset();
+  storeMocks.resetOrchestratorTerminalLog.mockReset();
+});
+
+describe("TmuxOrchestratorService.createSession", () => {
+  it("defaults new sessions to the implementation orchestrator custom agent", async () => {
+    const root = await createTempWorkspaceRoot();
+    await Promise.all([
+      mkdir(path.join(root, "agents"), { recursive: true }),
+      mkdir(path.join(root, "memory"), { recursive: true }),
+      mkdir(path.join(root, "skills"), { recursive: true }),
+    ]);
+    await mkdir(path.join(root, ".github", "agents"), { recursive: true });
+    await writeFile(
+      path.join(
+        root,
+        ".github",
+        "agents",
+        "implementation-orchestrator.agent.md"
+      ),
+      [
+        "---",
+        "name: Implementation Orchestrator",
+        "description: Coordinates the specialist Copilot agents.",
+        "---",
+        "",
+        "Delegate implementation through the specialist team.",
+        "",
+      ].join("\n"),
+      "utf8"
+    );
+    const workspace = await resolveWorkspace({
+      storeRoot: root,
+      copilotConfigDir: path.join(root, ".copilot-home"),
+    });
+    const service = new TmuxOrchestratorService(workspace, root);
+    Object.assign(service as object, {
+      assertCapabilities: vi.fn().mockResolvedValue(undefined),
+      createWindow: vi.fn().mockResolvedValue("%42"),
+      getSession: vi.fn().mockResolvedValue({
+        sessionId: "2026-03-23-ship-a-coordinated-implementation",
+        agentId: "copilot-orchestrator",
+        title: "Ship a coordinated implementation",
+        startedAt: "2026-03-23T00:00:00.000Z",
+        updatedAt: "2026-03-23T00:00:00.000Z",
+        summary: "Ship a coordinated implementation",
+        projectPath: root,
+        projectPurpose: "Ship a coordinated implementation",
+        model: "gpt-5.4",
+        tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+        tmuxWindowName: "tmp-ship-a-coordinated-impl",
+        tmuxPaneId: "%42",
+        status: "idle",
+        activeJobId: undefined,
+        lastJobId: undefined,
+        availableCustomAgents: [
+          {
+            id: "implementation-orchestrator",
+            name: "Implementation Orchestrator",
+            description: "Coordinates the specialist Copilot agents.",
+            path: ".github/agents/implementation-orchestrator.agent.md",
+          },
+        ],
+        selectedCustomAgentId: "implementation-orchestrator",
+        sessionDirectory: path.join(
+          root,
+          "agents",
+          "copilot-orchestrator",
+          "history",
+          "2026-03",
+          "2026-03-23-ship-a-coordinated-implementation"
+        ),
+        manifestPath:
+          "agents/copilot-orchestrator/history/2026-03/2026-03-23-ship-a-coordinated-implementation/SESSION.md",
+        jobs: [],
+        terminalTail: "",
+        logSize: 0,
+      }),
+    });
+
+    const session = await service.createSession({
+      projectPath: root,
+      projectPurpose: "Ship a coordinated implementation",
+      model: "gpt-5.4",
+    });
+
+    expect(session.availableCustomAgents).toEqual([
+      {
+        id: "implementation-orchestrator",
+        name: "Implementation Orchestrator",
+        description: "Coordinates the specialist Copilot agents.",
+        path: ".github/agents/implementation-orchestrator.agent.md",
+      },
+    ]);
+    expect(session.selectedCustomAgentId).toBe("implementation-orchestrator");
+  });
+});
+
+describe("TmuxOrchestratorService.delegate", () => {
+  it("queues another job instead of rejecting when a session is already running", async () => {
+    const runningJob: OrchestratorJob = {
+      jobId: "job-1",
+      sessionId: "session-1",
+      promptPreview: "Investigate the stuck deploy",
+      promptMode: "inline",
+      status: "running",
+      submittedAt: "2026-03-20T12:03:00Z",
+      startedAt: "2026-03-20T12:03:05Z",
+      jobDirectory: await createTempJobDirectory(),
+    };
+    const queuedJob: OrchestratorJob = {
+      jobId: "job-2",
+      sessionId: "session-1",
+      promptPreview: "Write the rollback checklist",
+      promptMode: "inline",
+      status: "queued",
+      submittedAt: "2026-03-20T12:04:00Z",
+      jobDirectory: await createTempJobDirectory(),
+    };
+    const runningSession: OrchestratorSession = {
+      sessionId: "session-1",
+      agentId: "copilot-orchestrator",
+      title: "Repo support",
+      startedAt: "2026-03-20T12:00:00Z",
+      updatedAt: "2026-03-20T12:05:00Z",
+      summary: "Handle runtime support work",
+      projectPath: "/tmp/project",
+      projectPurpose: "Handle runtime support work",
+      model: "gpt-5.4",
+      tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      tmuxWindowName: "project-repo-support-0001",
+      tmuxPaneId: "%42",
+      status: "running",
+      activeJobId: "job-1",
+      lastJobId: "job-1",
+      availableCustomAgents: [],
+      selectedCustomAgentId: undefined,
+      sessionDirectory: "/tmp/orchestrator/session-1",
+      manifestPath:
+        "agents/copilot-orchestrator/history/2026-03/session-1/SESSION.md",
+      jobs: [runningJob],
+      terminalTail: "",
+      logSize: 0,
+    };
+    const queuedSession: OrchestratorSession = {
+      ...runningSession,
+      updatedAt: "2026-03-20T12:06:00Z",
+      lastJobId: "job-2",
+      jobs: [queuedJob, runningJob],
+    };
+
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp" } as never,
+      "/tmp",
+      undefined,
+      vi.fn(async () => ({
+        id: "gpt-5.4",
+        displayName: "GPT-5.4",
+        runtimeProvider: "copilot",
+        provider: "OpenAI",
+        premiumRequestMultiplier: 2,
+        supportedReasoningEfforts: [],
+      }))
+    );
+    Object.assign(service as object, {
+      getSession: vi
+        .fn()
+        .mockResolvedValueOnce(runningSession)
+        .mockResolvedValueOnce(queuedSession),
+      runTmux: vi.fn(),
+      tmuxPaneExists: vi.fn().mockResolvedValue(true),
+      getCapabilities: vi.fn().mockResolvedValue({
+        available: true,
+        defaultProjectPath: "/tmp",
+        recentProjectPaths: [],
+        tmuxInstalled: true,
+        copilotInstalled: true,
+        tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      }),
+    });
+    storeMocks.createOrchestratorJob.mockResolvedValueOnce(queuedJob);
+
+    const result = await service.delegate(
+      "session-1",
+      "Write the rollback checklist"
+    );
+
+    expect(storeMocks.createOrchestratorJob).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1",
+      expect.objectContaining({
+        prompt: "Write the rollback checklist",
+        promptPreview: "Write the rollback checklist",
+        promptMode: "inline",
+        premiumUsage: {
+          source: "tmux-estimate",
+          model: "gpt-5.4",
+          premiumRequestUnits: 2,
+          billingMultiplier: 2,
+          recordedAt: expect.any(String),
+        },
+      })
+    );
+    expect(storeMocks.updateOrchestratorSession).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1",
+      {
+        lastJobId: "job-2",
+        status: "running",
+      }
+    );
+    expect(storeMocks.updateOrchestratorJob).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1",
+      "job-2",
+      expect.objectContaining({
+        outputPath: expect.stringContaining("/output.log"),
+      })
+    );
+    expect(result).toEqual(queuedSession);
+  });
+
+  it("passes the selected custom agent through to queued jobs", async () => {
+    const queuedJob: OrchestratorJob = {
+      jobId: "job-2",
+      sessionId: "session-1",
+      promptPreview: "Review the release diff",
+      promptMode: "inline",
+      customAgentId: "reviewer",
+      status: "queued",
+      submittedAt: "2026-03-20T12:04:00Z",
+      jobDirectory: await createTempJobDirectory(),
+    };
+    const session: OrchestratorSession = {
+      sessionId: "session-1",
+      agentId: "copilot-orchestrator",
+      title: "Repo support",
+      startedAt: "2026-03-20T12:00:00Z",
+      updatedAt: "2026-03-20T12:05:00Z",
+      summary: "Handle runtime support work",
+      projectPath: "/tmp/project",
+      projectPurpose: "Handle runtime support work",
+      model: "gpt-5.4",
+      tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      tmuxWindowName: "project-repo-support-0001",
+      tmuxPaneId: "%42",
+      status: "idle",
+      activeJobId: undefined,
+      lastJobId: undefined,
+      availableCustomAgents: [
+        {
+          id: "reviewer",
+          name: "Reviewer",
+          description: "Reviews changes.",
+          path: ".github/agents/reviewer.agent.md",
+        },
+      ],
+      selectedCustomAgentId: undefined,
+      sessionDirectory: "/tmp/orchestrator/session-1",
+      manifestPath:
+        "agents/copilot-orchestrator/history/2026-03/session-1/SESSION.md",
+      jobs: [],
+      terminalTail: "",
+      logSize: 0,
+    };
+    const queuedSession: OrchestratorSession = {
+      ...session,
+      updatedAt: "2026-03-20T12:06:00Z",
+      selectedCustomAgentId: "reviewer",
+      lastJobId: "job-2",
+      jobs: [queuedJob],
+    };
+
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp" } as never,
+      "/tmp"
+    );
+    Object.assign(service as object, {
+      getSession: vi
+        .fn()
+        .mockResolvedValueOnce(session)
+        .mockResolvedValueOnce(queuedSession),
+      startPreparedJob: vi.fn().mockResolvedValue(undefined),
+      prepareJobArtifacts: vi.fn().mockResolvedValue(queuedJob),
+      tmuxPaneExists: vi.fn().mockResolvedValue(true),
+      getCapabilities: vi.fn().mockResolvedValue({
+        available: true,
+        defaultProjectPath: "/tmp",
+        recentProjectPaths: [],
+        tmuxInstalled: true,
+        copilotInstalled: true,
+        tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      }),
+    });
+    storeMocks.createOrchestratorJob.mockResolvedValueOnce(queuedJob);
+
+    const result = await service.delegate("session-1", {
+      prompt: "Review the release diff",
+      customAgentId: "reviewer",
+    });
+
+    expect(storeMocks.createOrchestratorJob).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1",
+      expect.objectContaining({
+        customAgentId: "reviewer",
+      })
+    );
+    expect(storeMocks.updateOrchestratorSession).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1",
+      {
+        selectedCustomAgentId: "reviewer",
+      }
+    );
+    expect(result).toEqual(queuedSession);
+  });
+
+  it("recreates a missing tmux session before starting a delegated job", async () => {
+    const runningJob: OrchestratorJob = {
+      jobId: "job-1",
+      sessionId: "session-1",
+      promptPreview: "Investigate the stuck deploy",
+      promptMode: "inline",
+      status: "running",
+      submittedAt: "2026-03-20T12:03:00Z",
+      startedAt: "2026-03-20T12:03:05Z",
+      jobDirectory: await createTempJobDirectory(),
+    };
+    const queuedJob: OrchestratorJob = {
+      jobId: "job-2",
+      sessionId: "session-1",
+      promptPreview: "Write the rollback checklist",
+      promptMode: "inline",
+      status: "queued",
+      submittedAt: "2026-03-20T12:04:00Z",
+      jobDirectory: await createTempJobDirectory(),
+    };
+    const missingSession: OrchestratorSession = {
+      sessionId: "session-1",
+      agentId: "copilot-orchestrator",
+      title: "Repo support",
+      startedAt: "2026-03-20T12:00:00Z",
+      updatedAt: "2026-03-20T12:05:00Z",
+      summary: "Handle runtime support work",
+      projectPath: "/tmp/project",
+      projectPurpose: "Handle runtime support work",
+      model: "gpt-5.4",
+      tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      tmuxWindowName: "project-repo-support-0001",
+      tmuxPaneId: "%42",
+      status: "missing",
+      activeJobId: undefined,
+      lastJobId: "job-1",
+      availableCustomAgents: [],
+      selectedCustomAgentId: undefined,
+      sessionDirectory: "/tmp/orchestrator/session-1",
+      manifestPath:
+        "agents/copilot-orchestrator/history/2026-03/session-1/SESSION.md",
+      jobs: [runningJob],
+      terminalTail: "",
+      logSize: 0,
+    };
+    const refreshedSession: OrchestratorSession = {
+      ...missingSession,
+      tmuxPaneId: "%99",
+      status: "running",
+      activeJobId: "job-2",
+      lastJobId: "job-2",
+      jobs: [
+        {
+          ...runningJob,
+          status: "failed",
+          completedAt: "2026-03-20T12:06:00Z",
+          exitCode: -1,
+        },
+        {
+          ...queuedJob,
+          status: "running",
+          startedAt: "2026-03-20T12:06:00Z",
+        },
+      ],
+      systemNotice:
+        "A new tmux session was created because the previous tmux session no longer existed.",
+    };
+
+    const prepareJobArtifacts = vi.fn().mockResolvedValue(queuedJob);
+    const startPreparedJob = vi.fn().mockResolvedValue(undefined);
+    const createWindow = vi.fn().mockResolvedValue("%99");
+    const runTmux = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp" } as never,
+      "/tmp"
+    );
+    Object.assign(service as object, {
+      getSession: vi
+        .fn()
+        .mockResolvedValueOnce(missingSession)
+        .mockResolvedValueOnce(refreshedSession),
+      prepareJobArtifacts,
+      startPreparedJob,
+      createWindow,
+      runTmux,
+      getCapabilities: vi.fn().mockResolvedValue({
+        available: true,
+        defaultProjectPath: "/tmp",
+        recentProjectPaths: [],
+        tmuxInstalled: true,
+        copilotInstalled: true,
+        tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      }),
+    });
+    storeMocks.createOrchestratorJob.mockResolvedValueOnce(queuedJob);
+
+    const result = await service.delegate(
+      "session-1",
+      "Write the rollback checklist"
+    );
+
+    expect(createWindow).toHaveBeenCalledWith({
+      projectPath: "/tmp/project",
+      tmuxWindowName: "project-repo-support-0001",
+      startedAt: "2026-03-20T12:00:00Z",
+      title: "Repo support",
+      sessionId: "session-1",
+    });
+    expect(runTmux).toHaveBeenCalledWith([
+      "send-keys",
+      "-t",
+      "%99",
+      expect.stringContaining(
+        "A new tmux session was created because the previous tmux session no longer existed."
+      ),
+      "Enter",
+    ]);
+    expect(storeMocks.updateOrchestratorJob).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1",
+      "job-1",
+      expect.objectContaining({
+        status: "failed",
+        exitCode: -1,
+      })
+    );
+    expect(storeMocks.updateOrchestratorSession).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1",
+      {
+        tmuxPaneId: "%99",
+        status: "idle",
+        activeJobId: undefined,
+        lastJobId: "job-1",
+      }
+    );
+    expect(prepareJobArtifacts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tmuxPaneId: "%99",
+        status: "idle",
+      }),
+      queuedJob,
+      "Write the rollback checklist"
+    );
+    expect(startPreparedJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tmuxPaneId: "%99",
+        status: "idle",
+      }),
+      queuedJob
+    );
+    expect(result).toEqual(refreshedSession);
+  });
+
+  it("validates Gemini sessions against Gemini CLI availability", async () => {
+    const queuedJob: OrchestratorJob = {
+      jobId: "job-2",
+      sessionId: "session-1",
+      promptPreview: "Summarize the failures",
+      promptMode: "inline",
+      status: "queued",
+      submittedAt: "2026-03-20T12:04:00Z",
+      jobDirectory: await createTempJobDirectory(),
+    };
+    const session: OrchestratorSession = {
+      sessionId: "session-1",
+      agentId: "copilot-orchestrator",
+      title: "Repo support",
+      startedAt: "2026-03-20T12:00:00Z",
+      updatedAt: "2026-03-20T12:05:00Z",
+      summary: "Handle runtime support work",
+      projectPath: "/tmp/project",
+      projectPurpose: "Handle runtime support work",
+      cliProvider: "gemini",
+      model: "gemini-2.5-pro",
+      tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      tmuxWindowName: "project-repo-support-0001",
+      tmuxPaneId: "%42",
+      status: "idle",
+      activeJobId: undefined,
+      lastJobId: undefined,
+      availableCustomAgents: [],
+      selectedCustomAgentId: undefined,
+      sessionDirectory: "/tmp/orchestrator/session-1",
+      manifestPath:
+        "agents/copilot-orchestrator/history/2026-03/session-1/SESSION.md",
+      jobs: [],
+      terminalTail: "",
+      logSize: 0,
+    };
+    const queuedSession: OrchestratorSession = {
+      ...session,
+      updatedAt: "2026-03-20T12:06:00Z",
+      lastJobId: "job-2",
+      jobs: [queuedJob],
+    };
+
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp" } as never,
+      "/tmp"
+    );
+    Object.assign(service as object, {
+      getSession: vi
+        .fn()
+        .mockResolvedValueOnce(session)
+        .mockResolvedValueOnce(queuedSession),
+      startPreparedJob: vi.fn().mockResolvedValue(undefined),
+      prepareJobArtifacts: vi.fn().mockResolvedValue(queuedJob),
+      tmuxPaneExists: vi.fn().mockResolvedValue(true),
+      getCapabilities: vi.fn().mockResolvedValue({
+        available: true,
+        defaultProjectPath: "/tmp",
+        recentProjectPaths: [],
+        tmuxInstalled: true,
+        copilotInstalled: false,
+        geminiInstalled: true,
+        tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      }),
+    });
+    storeMocks.createOrchestratorJob.mockResolvedValueOnce(queuedJob);
+
+    const result = await service.delegate(
+      "session-1",
+      "Summarize the failures"
+    );
+
+    expect(storeMocks.createOrchestratorJob).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1",
+      expect.objectContaining({
+        prompt: "Summarize the failures",
+        promptPreview: "Summarize the failures",
+      })
+    );
+    expect(result).toEqual(queuedSession);
+  });
+
+  it("requeues a failed job from its persisted prompt and attachment", async () => {
+    const storeRoot = await createTempWorkspaceRoot();
+    const attachmentPath = path.join(storeRoot, "attachments", "failure.log");
+    await mkdir(path.dirname(attachmentPath), { recursive: true });
+    await writeFile(attachmentPath, "build failed", "utf8");
+    const failedSession: OrchestratorSession = {
+      sessionId: "session-1",
+      agentId: "copilot-orchestrator",
+      title: "Repo support",
+      startedAt: "2026-03-20T12:00:00Z",
+      updatedAt: "2026-03-20T12:05:00Z",
+      summary: "Handle runtime support work",
+      projectPath: "/tmp/project",
+      projectPurpose: "Handle runtime support work",
+      model: "gpt-5.4",
+      tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      tmuxWindowName: "project-repo-support-0001",
+      tmuxPaneId: "%42",
+      status: "failed",
+      activeJobId: undefined,
+      lastJobId: "job-1",
+      availableCustomAgents: [],
+      selectedCustomAgentId: undefined,
+      sessionDirectory: "/tmp/orchestrator/session-1",
+      manifestPath:
+        "agents/copilot-orchestrator/history/2026-03/session-1/SESSION.md",
+      jobs: [
+        {
+          jobId: "job-1",
+          sessionId: "session-1",
+          prompt: "Retry the failed rollout validation",
+          promptPreview: "Retry the failed rollout validation",
+          promptMode: "file",
+          attachment: {
+            attachmentId: "att-1",
+            name: "failure.log",
+            contentType: "text/plain",
+            size: 12,
+            mediaType: "text",
+            relativePath: "attachments/failure.log",
+          },
+          status: "failed",
+          submittedAt: "2026-03-20T12:03:00Z",
+          completedAt: "2026-03-20T12:05:00Z",
+          exitCode: 1,
+          jobDirectory: await createTempJobDirectory(),
+        },
+      ],
+      terminalTail: "",
+      logSize: 0,
+    };
+    const retriedSession: OrchestratorSession = {
+      ...failedSession,
+      updatedAt: "2026-03-20T12:06:00Z",
+    };
+    const queueDelegation = vi.fn().mockResolvedValue({
+      job: undefined,
+      systemNotice: undefined,
+    });
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp", storeRoot } as never,
+      "/tmp"
+    );
+    Object.assign(service as object, {
+      getSession: vi
+        .fn()
+        .mockResolvedValueOnce(failedSession)
+        .mockResolvedValueOnce(retriedSession),
+      getCapabilities: vi.fn().mockResolvedValue({
+        available: true,
+        defaultProjectPath: "/tmp",
+        recentProjectPaths: [],
+        tmuxInstalled: true,
+        copilotInstalled: true,
+        tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      }),
+      queueDelegation,
+    });
+
+    const result = await service.retryJob("session-1", "job-1");
+
+    expect(queueDelegation).toHaveBeenCalledWith(
+      failedSession,
+      "Retry the failed rollout validation",
+      {
+        attachment: {
+          name: "failure.log",
+          contentType: "text/plain",
+          size: 12,
+          base64Data: Buffer.from("build failed").toString("base64"),
+        },
+        customAgentId: undefined,
+      }
+    );
+    expect(result).toEqual(retriedSession);
+  });
+
+  it("requeues older failed jobs from prompt files and attachments", async () => {
+    const storeRoot = await createTempWorkspaceRoot();
+    const attachmentPath = path.join(storeRoot, "attachments", "failure.log");
+    const promptPath = path.join(storeRoot, "prompts", "retry.txt");
+    await mkdir(path.dirname(attachmentPath), { recursive: true });
+    await mkdir(path.dirname(promptPath), { recursive: true });
+    await writeFile(attachmentPath, "build failed", "utf8");
+    await writeFile(promptPath, "Retry the failed rollout validation", "utf8");
+    const failedSession: OrchestratorSession = {
+      sessionId: "session-1",
+      agentId: "copilot-orchestrator",
+      title: "Repo support",
+      startedAt: "2026-03-20T12:00:00Z",
+      updatedAt: "2026-03-20T12:05:00Z",
+      summary: "Handle runtime support work",
+      projectPath: "/tmp/project",
+      projectPurpose: "Handle runtime support work",
+      model: "gpt-5.4",
+      tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      tmuxWindowName: "project-repo-support-0001",
+      tmuxPaneId: "%42",
+      status: "failed",
+      activeJobId: undefined,
+      lastJobId: "job-1",
+      availableCustomAgents: [],
+      selectedCustomAgentId: undefined,
+      sessionDirectory: "/tmp/orchestrator/session-1",
+      manifestPath:
+        "agents/copilot-orchestrator/history/2026-03/session-1/SESSION.md",
+      jobs: [
+        {
+          jobId: "job-1",
+          sessionId: "session-1",
+          promptPreview: "Retry the failed rollout validation",
+          promptMode: "file",
+          promptPath,
+          attachment: {
+            attachmentId: "att-1",
+            name: "failure.log",
+            contentType: "text/plain",
+            size: 12,
+            mediaType: "text",
+            relativePath: "attachments/failure.log",
+          },
+          status: "failed",
+          submittedAt: "2026-03-20T12:03:00Z",
+          completedAt: "2026-03-20T12:05:00Z",
+          exitCode: 1,
+          jobDirectory: await createTempJobDirectory(),
+        },
+      ],
+      terminalTail: "",
+      logSize: 0,
+    };
+    const retriedSession: OrchestratorSession = {
+      ...failedSession,
+      updatedAt: "2026-03-20T12:06:00Z",
+    };
+    const queueDelegation = vi.fn().mockResolvedValue({
+      job: undefined,
+      systemNotice: undefined,
+    });
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp", storeRoot } as never,
+      "/tmp"
+    );
+    Object.assign(service as object, {
+      getSession: vi
+        .fn()
+        .mockResolvedValueOnce(failedSession)
+        .mockResolvedValueOnce(retriedSession),
+      getCapabilities: vi.fn().mockResolvedValue({
+        available: true,
+        defaultProjectPath: "/tmp",
+        recentProjectPaths: [],
+        tmuxInstalled: true,
+        copilotInstalled: true,
+        tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      }),
+      queueDelegation,
+    });
+
+    const result = await service.retryJob("session-1", "job-1");
+
+    expect(queueDelegation).toHaveBeenCalledWith(
+      failedSession,
+      "Retry the failed rollout validation",
+      {
+        attachment: {
+          name: "failure.log",
+          contentType: "text/plain",
+          size: 12,
+          base64Data: Buffer.from("build failed").toString("base64"),
+        },
+        customAgentId: undefined,
+      }
+    );
+    expect(result).toEqual(retriedSession);
+  });
+});
+
+describe("TmuxOrchestratorService premium usage tracking", () => {
+  it("increments the tmux session premium usage when a queued job starts", async () => {
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp" } as never,
+      "/tmp"
+    );
+    Object.assign(service as object, {
+      runTmux: vi.fn().mockResolvedValue({ stdout: "", stderr: "" }),
+    });
+
+    await Reflect.get(service, "startPreparedJob").call(
+      service,
+      {
+        sessionId: "session-1",
+        tmuxPaneId: "%42",
+        premiumUsage: {
+          chargedRequestCount: 1,
+          premiumRequestUnits: 2,
+          lastRecordedAt: "2026-03-20T12:03:00Z",
+          lastModel: "gpt-5.4",
+        },
+      },
+      {
+        jobId: "job-2",
+        jobDirectory: "/tmp/orchestrator/session-1/delegations/job-2",
+        premiumUsage: {
+          source: "tmux-estimate",
+          model: "gpt-5.4",
+          premiumRequestUnits: 2,
+          billingMultiplier: 2,
+          recordedAt: "2026-03-20T12:04:00Z",
+        },
+      }
+    );
+
+    expect(storeMocks.updateOrchestratorSession).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1",
+      {
+        activeJobId: "job-2",
+        lastJobId: "job-2",
+        premiumUsage: {
+          chargedRequestCount: 2,
+          premiumRequestUnits: 4,
+          lastRecordedAt: "2026-03-20T12:04:00Z",
+          lastModel: "gpt-5.4",
+        },
+        status: "running",
+      }
+    );
+  });
+});
+
+describe("shouldMaterializePrompt", () => {
+  it("spills large or multiline prompts to files", () => {
+    expect(shouldMaterializePrompt("short prompt")).toBe(false);
+    expect(shouldMaterializePrompt("line\n".repeat(16))).toBe(true);
+    expect(shouldMaterializePrompt("x".repeat(801))).toBe(true);
+  });
+});
+
+describe("buildCopilotCommand", () => {
+  it("uses direct prompts when possible", () => {
+    expect(
+      buildCopilotCommand({
+        model: "gpt-5.4",
+        prompt: "Fix the flaky test",
+        promptMode: "inline",
+        projectPurpose: "Repair test stability",
+        executionMode: "standard",
+      })
+    ).toContain("copilot --model 'gpt-5.4' --yolo -p");
+  });
+
+  it("includes a custom agent flag when selected", () => {
+    expect(
+      buildCopilotCommand({
+        model: "gpt-5.4",
+        prompt: "Review the release diff",
+        promptMode: "inline",
+        projectPurpose: "Review release risk",
+        customAgentId: "reviewer",
+        executionMode: "standard",
+      })
+    ).toContain("--agent 'reviewer'");
+  });
+
+  it("references a prompt file for large prompts", () => {
+    const command = buildCopilotCommand({
+      model: "claude-sonnet-4.6",
+      prompt: "See file",
+      promptMode: "file",
+      promptPath: "/tmp/prompt.txt",
+      projectPurpose: "Review logs",
+      executionMode: "standard",
+    });
+    expect(command).toContain("/tmp/prompt.txt");
+    expect(command).toContain("Project purpose: Review logs");
+  });
+
+  it("uses fleet mode when requested", () => {
+    expect(
+      buildCopilotCommand({
+        model: "gpt-5.4",
+        prompt: "Refactor auth and tests",
+        promptMode: "inline",
+        projectPurpose: "Ship auth cleanup",
+        executionMode: "fleet",
+      })
+    ).toContain("--yolo -p '/fleet Refactor auth and tests'");
+  });
+
+  it("uses auto mode when requested", () => {
+    expect(
+      buildCopilotCommand({
+        model: "gpt-5.4",
+        prompt: "Refactor auth and tests",
+        promptMode: "inline",
+        projectPurpose: "Ship auth cleanup",
+        executionMode: "auto",
+      })
+    ).toContain("--mode autopilot --yolo -p 'Refactor auth and tests'");
+  });
+
+  it("allows auto model selection", () => {
+    expect(
+      buildCopilotCommand({
+        model: "auto",
+        prompt: "Refactor auth and tests",
+        promptMode: "inline",
+        projectPurpose: "Ship auth cleanup",
+        executionMode: "standard",
+      })
+    ).toContain("copilot --model 'auto' --yolo -p");
+  });
+});
+
+describe("buildDelegationShellScript", () => {
+  it("writes completion markers and notifies tmux", () => {
+    const script = buildDelegationShellScript({
+      jobId: "job-1234",
+      donePath: "/tmp/job-1234/DONE.json",
+      outputPath: "/tmp/job-1234/output.log",
+      model: "gpt-5.4",
+      prompt: "Investigate the regression",
+      promptMode: "inline",
+      projectPurpose: "Repair regressions",
+      executionMode: "standard",
+      tmuxTarget: "%42",
+    });
+
+    expect(script).toContain(
+      'completion_message="coding-agent-orchestrator: job $job_id'
+    );
+    expect(script).toContain("[coding-agent-orchestrator] Notification:");
+    expect(script).toContain("tmux display-message -d 15000");
+    expect(script).toContain("copilot --model 'gpt-5.4' --yolo -p");
+    expect(script).toContain("/tmp/job-1234/DONE.json");
+    expect(script).toContain("extract_rate_limit_wait_seconds()");
+    expect(script).toContain("Copilot rate limit detected");
+  });
+
+  it("waits for the Copilot rate limit reset before retrying", async () => {
+    const root = await createTempJobDirectory();
+    const binRoot = path.join(root, "bin");
+    await mkdir(binRoot, { recursive: true });
+    const outputPath = path.join(root, "output.log");
+    const donePath = path.join(root, "DONE.json");
+    const counterPath = path.join(root, "copilot-count.txt");
+    const sleepLogPath = path.join(root, "sleep.log");
+    const tmuxLogPath = path.join(root, "tmux.log");
+    const scriptPath = path.join(root, "run.sh");
+
+    await writeExecutable(
+      path.join(binRoot, "copilot"),
+      [
+        "#!/usr/bin/env bash",
+        "set -eu",
+        `counter_path=${shellQuoteForTest(counterPath)}`,
+        'count="0"',
+        'if [ -f "$counter_path" ]; then',
+        '  count=$(cat "$counter_path")',
+        "fi",
+        "count=$((count + 1))",
+        'printf "%s" "$count" > "$counter_path"',
+        'if [ "$count" -eq 1 ]; then',
+        "  echo 'Error: 429 Too Many Requests' >&2",
+        "  echo 'Retry-After: 2' >&2",
+        "  exit 1",
+        "fi",
+        "echo 'Recovered after reset'",
+        "exit 0",
+      ].join("\n")
+    );
+    await writeExecutable(
+      path.join(binRoot, "sleep"),
+      [
+        "#!/usr/bin/env bash",
+        "set -eu",
+        `printf '%s\n' "$1" >> ${shellQuoteForTest(sleepLogPath)}`,
+      ].join("\n")
+    );
+    await writeExecutable(
+      path.join(binRoot, "tmux"),
+      [
+        "#!/usr/bin/env bash",
+        "set -eu",
+        `printf '%s\n' "$*" >> ${shellQuoteForTest(tmuxLogPath)}`,
+      ].join("\n")
+    );
+
+    const script = buildDelegationShellScript({
+      jobId: "job-1234",
+      donePath,
+      outputPath,
+      model: "gpt-5.4",
+      prompt: "Investigate the regression",
+      promptMode: "inline",
+      projectPurpose: "Repair regressions",
+      executionMode: "standard",
+      tmuxTarget: "%42",
+    });
+    await writeExecutable(scriptPath, script);
+
+    await execFile("bash", [scriptPath], {
+      env: {
+        ...process.env,
+        PATH: `${binRoot}:${process.env.PATH ?? ""}`,
+      },
+    });
+
+    expect(await readFile(counterPath, "utf8")).toBe("2");
+    expect(await readFile(sleepLogPath, "utf8")).toContain("7");
+    expect(await readFile(outputPath, "utf8")).toContain(
+      "Copilot rate limit detected"
+    );
+    expect(await readFile(donePath, "utf8")).toContain('"exitCode": 0');
+  });
+});
+
+describe("extractCopilotRateLimitWaitSeconds", () => {
+  it("prefers Retry-After seconds when present", () => {
+    expect(
+      extractCopilotRateLimitWaitSeconds(
+        "Error: 429 Too Many Requests\nRetry-After: 17"
+      )
+    ).toBe(17);
+  });
+
+  it("derives the wait from reset timestamps", () => {
+    const now = Date.parse("2026-05-06T03:00:00Z");
+    expect(
+      extractCopilotRateLimitWaitSeconds(
+        "GitHub Copilot session limit reached. Available again at: 2026-05-06T03:02:10Z",
+        now
+      )
+    ).toBe(130);
+  });
+
+  it("derives the wait from x-ratelimit-reset epochs", () => {
+    const now = Date.parse("2026-05-06T03:00:00Z");
+    expect(
+      extractCopilotRateLimitWaitSeconds(
+        "Error: rate limit exceeded\nx-ratelimit-reset: 1778036585",
+        now
+      )
+    ).toBe(185);
+  });
+
+  it("sums compound relative durations from the Copilot error message", () => {
+    expect(
+      extractCopilotRateLimitWaitSeconds(
+        "GitHub Copilot rate limit reached. Try again in 1m 30s."
+      )
+    ).toBe(90);
+  });
+
+  it("falls back to a conservative default for generic rate limit errors", () => {
+    expect(
+      extractCopilotRateLimitWaitSeconds(
+        "GitHub Copilot weekly limit reached. Please try again later."
+      )
+    ).toBe(60);
+  });
+});
+
+describe("deriveSessionStatus", () => {
+  it("marks sessions missing when the tmux pane disappears", () => {
+    expect(
+      deriveSessionStatus(
+        {
+          status: "running",
+          activeJobId: "job-1",
+          lastJobId: "job-1",
+          jobs: [],
+        },
+        false
+      )
+    ).toEqual({
+      status: "missing",
+      activeJobId: undefined,
+      lastJobId: "job-1",
+    });
+  });
+});
+
+async function writeExecutable(filePath: string, contents: string) {
+  await writeFile(filePath, `${contents}\n`, "utf8");
+  await chmod(filePath, 0o755);
+}
+
+function shellQuoteForTest(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+describe("buildMemoryAnalysisPrompt", () => {
+  it("formats a chat transcript for skill-driven memory updates", () => {
+    const thread: ChatSession = {
+      sessionId: "thread-1",
+      agentId: "coding-agent",
+      title: "Auth debugging",
+      startedAt: "2026-03-20T12:00:00Z",
+      summary: "Investigating auth redirects",
+      manifestPath: "agents/coding-agent/history/2026-03/thread-1/SESSION.md",
+      turnCount: 2,
+      turns: [
+        {
+          messageId: "m1",
+          sender: "user",
+          createdAt: "2026-03-20T12:00:00Z",
+          bodyMarkdown: "Please remember that redirects fail on Safari.",
+          relativePath: "turns/m1.md",
+        },
+        {
+          messageId: "m2",
+          sender: "assistant",
+          createdAt: "2026-03-20T12:01:00Z",
+          bodyMarkdown: "I will investigate the Safari-specific cookie flow.",
+          relativePath: "turns/m2.md",
+        },
+      ],
+    };
+
+    const prompt = buildMemoryAnalysisPrompt(thread, [
+      "memory-capture",
+      "capture-working-memory",
+    ]);
+    expect(prompt).toContain("Working memory");
+    expect(prompt).toContain("capture-working-memory");
+    expect(prompt).toContain("Safari-specific cookie flow");
+    expect(prompt).toContain("exactly three sections");
+    expect(prompt).toContain("If you are unsure which tier applies");
+  });
+});
+
+describe("parseMemoryAnalysisMarkdown", () => {
+  it("extracts working, short-term, and long-term sections", () => {
+    expect(
+      parseMemoryAnalysisMarkdown(`## Working memory
+
+Keep the active incident in view.
+- Follow up with the on-call engineer
+
+## Short-term memory
+
+Track the open rollout decision.
+- Revisit after tomorrow's deployment
+
+## Long-term memory
+
+Remember the user's preferred release window.
+- Deploy after 6pm local time`)
+    ).toEqual({
+      working: {
+        summary: "Keep the active incident in view.",
+        items: ["Follow up with the on-call engineer"],
+      },
+      shortTerm: {
+        summary: "Track the open rollout decision.",
+        items: ["Revisit after tomorrow's deployment"],
+      },
+      longTerm: {
+        summary: "Remember the user's preferred release window.",
+        items: ["Deploy after 6pm local time"],
+      },
+    });
+  });
+
+  it("accepts inline section labels and numbered bullets from weaker models", () => {
+    expect(
+      parseMemoryAnalysisMarkdown(`Working memory: Keep the rollback owner visible.
+1. Page the on-call engineer
+
+Short-term memory - Revisit after tomorrow's deployment.
+2. Verify the retry window
+
+Long-term memory
+3. The user prefers blue-green deploys`)
+    ).toEqual({
+      working: {
+        summary: "Keep the rollback owner visible.",
+        items: ["Page the on-call engineer"],
+      },
+      shortTerm: {
+        summary: "Revisit after tomorrow's deployment.",
+        items: ["Verify the retry window"],
+      },
+      longTerm: {
+        summary: "",
+        items: ["The user prefers blue-green deploys"],
+      },
+    });
+  });
+
+  it("falls back to working memory when the model skips section headings", () => {
+    expect(
+      parseMemoryAnalysisMarkdown(
+        "Keep the deployment owner visible.\n- Check again after tomorrow's deploy"
+      )
+    ).toEqual({
+      working: {
+        summary: "Keep the deployment owner visible.",
+        items: ["Check again after tomorrow's deploy"],
+      },
+      shortTerm: {
+        summary: "",
+        items: [],
+      },
+      longTerm: {
+        summary: "",
+        items: [],
+      },
+    });
+  });
+});
+
+describe("isMemorySkillName", () => {
+  it("matches memory skill names with spaces or hyphens", () => {
+    expect(isMemorySkillName("capture working memory")).toBe(true);
+    expect(isMemorySkillName("capture-short term")).toBe(true);
+    expect(isMemorySkillName("project long-term notes")).toBe(true);
+    expect(isMemorySkillName("repo-search")).toBe(false);
+  });
+});
+
+describe("resolveMemoryAnalysisModel", () => {
+  it("defaults memory analysis to gpt-5-mini", () => {
+    expect(resolveMemoryAnalysisModel()).toBe(DEFAULT_MEMORY_ANALYSIS_MODEL);
+  });
+
+  it("accepts an explicit memory analysis model override", () => {
+    expect(resolveMemoryAnalysisModel("gpt-5.4-mini")).toBe("gpt-5.4-mini");
+  });
+});
+
+describe("buildMemoryAnalysisRuntimeConfig", () => {
+  it("disables non-memory skills during memory analysis", () => {
+    expect(
+      buildMemoryAnalysisRuntimeConfig({
+        availableSkillNames: [
+          "repo-search",
+          "memory-capture",
+          "capture-working-memory",
+        ],
+        baseConfig: {
+          reasoningEffort: "high",
+          mcpServers: {
+            github: {
+              type: "local",
+              command: "node",
+              args: ["server.js"],
+              env: {},
+              tools: ["*"],
+            },
+          },
+        },
+      })
+    ).toEqual({
+      provider: "copilot",
+      model: DEFAULT_MEMORY_ANALYSIS_MODEL,
+      reasoningEffort: "high",
+      mcpServers: {
+        github: {
+          type: "local",
+          command: "node",
+          args: ["server.js"],
+          env: {},
+          tools: ["*"],
+        },
+      },
+      disabledSkills: ["repo-search"],
+    });
+  });
+});
+
+describe("TmuxOrchestratorService.cancelJob", () => {
+  it("marks the active job failed and recreates the tmux pane", async () => {
+    const runningJob = {
+      jobId: "job-1",
+      sessionId: "session-1",
+      promptPreview: "Investigate the stuck deploy",
+      promptMode: "inline" as const,
+      status: "running" as const,
+      submittedAt: "2026-03-20T12:03:00Z",
+      startedAt: "2026-03-20T12:03:05Z",
+      jobDirectory: "/tmp/orchestrator/session-1/delegations/job-1",
+    };
+    const runningSession: OrchestratorSession = {
+      sessionId: "session-1",
+      agentId: "copilot-orchestrator",
+      title: "Repo support",
+      startedAt: "2026-03-20T12:00:00Z",
+      updatedAt: "2026-03-20T12:05:00Z",
+      summary: "Handle runtime support work",
+      projectPath: "/tmp/project",
+      projectPurpose: "Handle runtime support work",
+      model: "gpt-5.4",
+      tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      tmuxWindowName: "project-repo-support-0001",
+      tmuxPaneId: "%42",
+      status: "running",
+      activeJobId: "job-1",
+      lastJobId: "job-1",
+      availableCustomAgents: [],
+      selectedCustomAgentId: undefined,
+      sessionDirectory: "/tmp/orchestrator/session-1",
+      manifestPath:
+        "agents/copilot-orchestrator/history/2026-03/session-1/SESSION.md",
+      jobs: [runningJob],
+      terminalTail: "",
+      logSize: 0,
+    };
+    const recoveredSession: OrchestratorSession = {
+      ...runningSession,
+      tmuxPaneId: "%99",
+      status: "failed",
+      activeJobId: undefined,
+      jobs: [
+        {
+          ...runningJob,
+          status: "failed",
+          completedAt: "2026-03-20T12:06:00Z",
+          exitCode: -1,
+        },
+      ],
+    };
+
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp" } as never,
+      "/tmp"
+    );
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce(runningSession)
+      .mockResolvedValueOnce(recoveredSession);
+    const runTmux = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
+    const createWindow = vi.fn().mockResolvedValue("%99");
+
+    Object.assign(service as object, {
+      getSession,
+      tmuxPaneExists: vi.fn().mockResolvedValue(true),
+      readTmuxValue: vi.fn().mockResolvedValue("@7"),
+      runTmux,
+      createWindow,
+    });
+
+    const result = await service.cancelJob("session-1");
+
+    expect(runTmux).toHaveBeenCalledWith(["kill-window", "-t", "@7"]);
+    expect(createWindow).toHaveBeenCalledWith({
+      projectPath: "/tmp/project",
+      tmuxWindowName: "project-repo-support-0001",
+      startedAt: "2026-03-20T12:00:00Z",
+      title: "Repo support",
+      sessionId: "session-1",
+    });
+    expect(storeMocks.updateOrchestratorJob).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1",
+      "job-1",
+      expect.objectContaining({
+        status: "failed",
+        exitCode: -1,
+        completedAt: expect.any(String),
+      })
+    );
+    expect(storeMocks.writeOrchestratorJobCompletion).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1",
+      "job-1",
+      {
+        exitCode: -1,
+        completedAt: expect.any(String),
+      }
+    );
+    expect(storeMocks.updateOrchestratorSession).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1",
+      {
+        tmuxPaneId: "%99",
+        status: "failed",
+        activeJobId: undefined,
+        lastJobId: "job-1",
+      }
+    );
+    expect(result).toEqual(recoveredSession);
+  });
+});
+
+describe("TmuxOrchestratorService.deleteSession", () => {
+  it("kills the tmux window before deleting persisted session data", async () => {
+    const session: OrchestratorSession = {
+      sessionId: "session-1",
+      agentId: "copilot-orchestrator",
+      title: "Repo support",
+      startedAt: "2026-03-20T12:00:00Z",
+      updatedAt: "2026-03-20T12:05:00Z",
+      summary: "Handle runtime support work",
+      projectPath: "/tmp/project",
+      projectPurpose: "Handle runtime support work",
+      model: "gpt-5.4",
+      tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      tmuxWindowName: "project-repo-support-0001",
+      tmuxPaneId: "%42",
+      status: "idle",
+      activeJobId: undefined,
+      lastJobId: undefined,
+      availableCustomAgents: [],
+      selectedCustomAgentId: undefined,
+      sessionDirectory: "/tmp/orchestrator/session-1",
+      manifestPath:
+        "agents/copilot-orchestrator/history/2026-03/session-1/SESSION.md",
+      jobs: [],
+      terminalTail: "",
+      logSize: 0,
+    };
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp" } as never,
+      "/tmp"
+    );
+    const runTmux = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
+    Object.assign(service as object, {
+      getSession: vi.fn().mockResolvedValue(session),
+      tmuxPaneExists: vi.fn().mockResolvedValue(true),
+      readTmuxValue: vi.fn().mockResolvedValue("@7"),
+      runTmux,
+    });
+
+    await service.deleteSession("session-1");
+
+    expect(runTmux).toHaveBeenCalledWith(["kill-window", "-t", "@7"]);
+    expect(storeMocks.deleteOrchestratorSession).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1"
+    );
+  });
+});
+
+describe("TmuxOrchestratorService.restartSession", () => {
+  it("creates a fresh tmux pane and clears previous terminal logs", async () => {
+    const session: OrchestratorSession = {
+      sessionId: "session-1",
+      agentId: "copilot-orchestrator",
+      title: "Repo support",
+      startedAt: "2026-03-20T12:00:00Z",
+      updatedAt: "2026-03-20T12:05:00Z",
+      summary: "Handle runtime support work",
+      projectPath: "/tmp/project",
+      projectPurpose: "Handle runtime support work",
+      model: "gpt-5.4",
+      tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      tmuxWindowName: "project-repo-support-0001",
+      tmuxPaneId: "%42",
+      status: "completed",
+      activeJobId: undefined,
+      lastJobId: "job-1",
+      availableCustomAgents: [],
+      selectedCustomAgentId: undefined,
+      sessionDirectory: "/tmp/orchestrator/session-1",
+      manifestPath:
+        "agents/copilot-orchestrator/history/2026-03/session-1/SESSION.md",
+      jobs: [],
+      terminalTail: "old output",
+      logSize: 10,
+    };
+    const restartedSession: OrchestratorSession = {
+      ...session,
+      tmuxPaneId: "%99",
+      terminalTail: "[coding-agent-orchestrator] Ready for Repo support\n",
+      logSize: 36,
+    };
+
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp" } as never,
+      "/tmp"
+    );
+    const createWindow = vi.fn().mockResolvedValue("%99");
+
+    Object.assign(service as object, {
+      getCapabilities: vi.fn().mockResolvedValue({
+        available: true,
+        defaultProjectPath: "/tmp",
+        recentProjectPaths: [],
+        tmuxInstalled: true,
+        copilotInstalled: true,
+        tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      }),
+      getSession: vi.fn().mockResolvedValue(restartedSession),
+      createWindow,
+      killWindowForPane: vi.fn().mockResolvedValue(undefined),
+    });
+    storeMocks.getOrchestratorSession.mockResolvedValue(session);
+
+    const result = await service.restartSession("session-1");
+
+    expect(storeMocks.resetOrchestratorTerminalLog).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1"
+    );
+    expect(createWindow).toHaveBeenCalledWith({
+      projectPath: "/tmp/project",
+      tmuxWindowName: "project-repo-support-0001",
+      startedAt: "2026-03-20T12:00:00Z",
+      title: "Repo support",
+      sessionId: "session-1",
+    });
+    expect(storeMocks.updateOrchestratorSession).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1",
+      {
+        tmuxPaneId: "%99",
+        activeJobId: undefined,
+        status: "idle",
+      }
+    );
+    expect(result).toEqual(restartedSession);
+  });
+
+  it("restarts Gemini sessions without requiring Copilot CLI", async () => {
+    const session: OrchestratorSession = {
+      sessionId: "session-1",
+      agentId: "copilot-orchestrator",
+      title: "Repo support",
+      startedAt: "2026-03-20T12:00:00Z",
+      updatedAt: "2026-03-20T12:05:00Z",
+      summary: "Handle runtime support work",
+      projectPath: "/tmp/project",
+      projectPurpose: "Handle runtime support work",
+      cliProvider: "gemini",
+      model: "gemini-2.5-pro",
+      tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      tmuxWindowName: "project-repo-support-0001",
+      tmuxPaneId: "%42",
+      status: "completed",
+      activeJobId: undefined,
+      lastJobId: "job-1",
+      availableCustomAgents: [],
+      selectedCustomAgentId: undefined,
+      sessionDirectory: "/tmp/orchestrator/session-1",
+      manifestPath:
+        "agents/copilot-orchestrator/history/2026-03/session-1/SESSION.md",
+      jobs: [],
+      terminalTail: "old output",
+      logSize: 10,
+    };
+    const restartedSession: OrchestratorSession = {
+      ...session,
+      tmuxPaneId: "%99",
+      terminalTail: "[coding-agent-orchestrator] Ready for Repo support\n",
+      logSize: 36,
+    };
+
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp" } as never,
+      "/tmp"
+    );
+    const createWindow = vi.fn().mockResolvedValue("%99");
+
+    Object.assign(service as object, {
+      getCapabilities: vi.fn().mockResolvedValue({
+        available: true,
+        defaultProjectPath: "/tmp",
+        recentProjectPaths: [],
+        tmuxInstalled: true,
+        copilotInstalled: false,
+        geminiInstalled: true,
+        tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      }),
+      getSession: vi.fn().mockResolvedValue(restartedSession),
+      createWindow,
+      killWindowForPane: vi.fn().mockResolvedValue(undefined),
+    });
+    storeMocks.getOrchestratorSession.mockResolvedValue(session);
+
+    const result = await service.restartSession("session-1");
+
+    expect(storeMocks.resetOrchestratorTerminalLog).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1"
+    );
+    expect(createWindow).toHaveBeenCalledWith({
+      projectPath: "/tmp/project",
+      tmuxWindowName: "project-repo-support-0001",
+      startedAt: "2026-03-20T12:00:00Z",
+      title: "Repo support",
+      sessionId: "session-1",
+    });
+    expect(result).toEqual(restartedSession);
+  });
+});
+
+describe("TmuxOrchestratorService.deleteQueuedJob", () => {
+  it("removes queued jobs and returns the refreshed session", async () => {
+    const queuedJob: OrchestratorJob = {
+      jobId: "job-2",
+      sessionId: "session-1",
+      promptPreview: "Write the rollback checklist",
+      promptMode: "inline",
+      status: "queued",
+      submittedAt: "2026-03-20T12:04:00Z",
+      jobDirectory: "/tmp/job-2",
+    };
+    const session: OrchestratorSession = {
+      sessionId: "session-1",
+      agentId: "copilot-orchestrator",
+      title: "Repo support",
+      startedAt: "2026-03-20T12:00:00Z",
+      updatedAt: "2026-03-20T12:05:00Z",
+      summary: "Handle runtime support work",
+      projectPath: "/tmp/project",
+      projectPurpose: "Handle runtime support work",
+      model: "gpt-5.4",
+      tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      tmuxWindowName: "project-repo-support-0001",
+      tmuxPaneId: "%42",
+      status: "running",
+      activeJobId: "job-1",
+      lastJobId: "job-2",
+      availableCustomAgents: [],
+      selectedCustomAgentId: undefined,
+      sessionDirectory: "/tmp/orchestrator/session-1",
+      manifestPath:
+        "agents/copilot-orchestrator/history/2026-03/session-1/SESSION.md",
+      jobs: [queuedJob],
+      terminalTail: "",
+      logSize: 0,
+    };
+    const refreshedSession: OrchestratorSession = {
+      ...session,
+      lastJobId: "job-1",
+      jobs: [],
+    };
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp" } as never,
+      "/tmp"
+    );
+    Object.assign(service as object, {
+      getSession: vi
+        .fn()
+        .mockResolvedValueOnce(session)
+        .mockResolvedValueOnce(refreshedSession),
+    });
+
+    const result = await service.deleteQueuedJob("session-1", "job-2");
+
+    expect(storeMocks.deleteOrchestratorJob).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1",
+      "job-2"
+    );
+    expect(result).toEqual(refreshedSession);
+  });
+});
+
+describe("TmuxOrchestratorService queue recovery", () => {
+  it("starts the oldest queued job after the active one finishes", async () => {
+    const completedJob: OrchestratorJob = {
+      jobId: "job-1",
+      sessionId: "session-1",
+      promptPreview: "Investigate the stuck deploy",
+      promptMode: "inline",
+      status: "completed",
+      submittedAt: "2026-03-20T12:03:00Z",
+      startedAt: "2026-03-20T12:03:05Z",
+      completedAt: "2026-03-20T12:05:00Z",
+      exitCode: 0,
+      jobDirectory: await createTempJobDirectory(),
+    };
+    const queuedJob: OrchestratorJob = {
+      jobId: "job-2",
+      sessionId: "session-1",
+      promptPreview: "Write the rollback checklist",
+      promptMode: "inline",
+      status: "queued",
+      submittedAt: "2026-03-20T12:04:00Z",
+      jobDirectory: await createTempJobDirectory(),
+    };
+    const staleSession: OrchestratorSession = {
+      sessionId: "session-1",
+      agentId: "copilot-orchestrator",
+      title: "Repo support",
+      startedAt: "2026-03-20T12:00:00Z",
+      updatedAt: "2026-03-20T12:05:00Z",
+      summary: "Handle runtime support work",
+      projectPath: "/tmp/project",
+      projectPurpose: "Handle runtime support work",
+      model: "gpt-5.4",
+      tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      tmuxWindowName: "project-repo-support-0001",
+      tmuxPaneId: "%42",
+      status: "completed",
+      activeJobId: undefined,
+      lastJobId: "job-1",
+      availableCustomAgents: [],
+      selectedCustomAgentId: undefined,
+      sessionDirectory: "/tmp/orchestrator/session-1",
+      manifestPath:
+        "agents/copilot-orchestrator/history/2026-03/session-1/SESSION.md",
+      jobs: [queuedJob, completedJob],
+      terminalTail: "",
+      logSize: 0,
+    };
+    const recoveredSession: OrchestratorSession = {
+      ...staleSession,
+      updatedAt: "2026-03-20T12:06:00Z",
+      status: "running",
+      activeJobId: "job-2",
+      lastJobId: "job-2",
+      jobs: [
+        { ...queuedJob, status: "running", startedAt: "2026-03-20T12:06:00Z" },
+        completedJob,
+      ],
+    };
+
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp" } as never,
+      "/tmp"
+    );
+    Object.assign(service as object, {
+      tmuxPaneExists: vi.fn().mockResolvedValue(true),
+      runTmux: vi.fn().mockResolvedValue({ stdout: "", stderr: "" }),
+    });
+    storeMocks.getOrchestratorSession.mockResolvedValueOnce(recoveredSession);
+
+    const reconcileSession = (
+      service as unknown as {
+        reconcileSession: (
+          session: OrchestratorSession
+        ) => Promise<OrchestratorSession>;
+      }
+    ).reconcileSession.bind(service);
+
+    const result = await reconcileSession(staleSession);
+
+    expect(storeMocks.updateOrchestratorJob).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1",
+      "job-2",
+      expect.objectContaining({
+        status: "running",
+        startedAt: expect.any(String),
+      })
+    );
+    expect(storeMocks.updateOrchestratorSession).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1",
+      {
+        activeJobId: "job-2",
+        lastJobId: "job-2",
+        status: "running",
+      }
+    );
+    expect(result).toEqual(recoveredSession);
+  });
+});
+
+describe("TmuxOrchestratorService.getSessionChanges", () => {
+  it("returns parsed git status entries for the session project", async () => {
+    const session: OrchestratorSession = {
+      sessionId: "session-1",
+      agentId: "copilot-orchestrator",
+      title: "Repo support",
+      startedAt: "2026-03-20T12:00:00Z",
+      updatedAt: "2026-03-20T12:05:00Z",
+      summary: "Handle runtime support work",
+      projectPath: "/tmp/project",
+      projectPurpose: "Handle runtime support work",
+      model: "gpt-5.4",
+      tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      tmuxWindowName: "project-repo-support-0001",
+      tmuxPaneId: "%42",
+      status: "idle",
+      activeJobId: undefined,
+      lastJobId: undefined,
+      availableCustomAgents: [],
+      selectedCustomAgentId: undefined,
+      sessionDirectory: "/tmp/orchestrator/session-1",
+      manifestPath:
+        "agents/copilot-orchestrator/history/2026-03/session-1/SESSION.md",
+      jobs: [],
+      terminalTail: "",
+      logSize: 0,
+    };
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp" } as never,
+      "/tmp"
+    );
+    const runGitCommand = vi
+      .fn()
+      .mockResolvedValueOnce({ stdout: "/tmp/project\n", stderr: "" })
+      .mockResolvedValueOnce({
+        stdout: [
+          " M apps/web/src/App.tsx",
+          "R  old-name.ts -> new-name.ts",
+          "?? notes.md",
+          "",
+        ].join("\n"),
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        stdout: "12\t4\tapps/web/src/App.tsx\n",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        stdout: "0\t0\told-name.ts => new-name.ts\n",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        stdout: "1\t0\tnotes.md\n",
+        stderr: "",
+      });
+
+    storeMocks.getOrchestratorSession.mockResolvedValueOnce(session);
+    Object.assign(service as object, {
+      commandExists: vi.fn().mockResolvedValue(true),
+      runGitCommand,
+    });
+
+    await expect(service.getSessionChanges("session-1")).resolves.toEqual({
+      state: "dirty",
+      projectPath: "/tmp/project",
+      repositoryRoot: "/tmp/project",
+      files: [
+        {
+          path: "apps/web/src/App.tsx",
+          previousPath: undefined,
+          statusCode: " M",
+          stagedStatus: undefined,
+          unstagedStatus: "modified",
+          displayStatus: "Modified unstaged",
+          lineStats: {
+            added: 12,
+            removed: 4,
+            isBinary: false,
+          },
+        },
+        {
+          path: "new-name.ts",
+          previousPath: "old-name.ts",
+          statusCode: "R ",
+          stagedStatus: "renamed",
+          unstagedStatus: undefined,
+          displayStatus: "Renamed staged",
+          lineStats: {
+            added: 0,
+            removed: 0,
+            isBinary: false,
+          },
+        },
+        {
+          path: "notes.md",
+          previousPath: undefined,
+          statusCode: "??",
+          stagedStatus: undefined,
+          unstagedStatus: "untracked",
+          displayStatus: "Untracked",
+          lineStats: {
+            added: 1,
+            removed: 0,
+            isBinary: false,
+          },
+        },
+      ],
+      message: undefined,
+    });
+  });
+
+  it("reports non-git project paths with an empty state", async () => {
+    const session: OrchestratorSession = {
+      sessionId: "session-1",
+      agentId: "copilot-orchestrator",
+      title: "Repo support",
+      startedAt: "2026-03-20T12:00:00Z",
+      updatedAt: "2026-03-20T12:05:00Z",
+      summary: "Handle runtime support work",
+      projectPath: "/tmp/project",
+      projectPurpose: "Handle runtime support work",
+      model: "gpt-5.4",
+      tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      tmuxWindowName: "project-repo-support-0001",
+      tmuxPaneId: "%42",
+      status: "idle",
+      activeJobId: undefined,
+      lastJobId: undefined,
+      availableCustomAgents: [],
+      selectedCustomAgentId: undefined,
+      sessionDirectory: "/tmp/orchestrator/session-1",
+      manifestPath:
+        "agents/copilot-orchestrator/history/2026-03/session-1/SESSION.md",
+      jobs: [],
+      terminalTail: "",
+      logSize: 0,
+    };
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp" } as never,
+      "/tmp"
+    );
+
+    storeMocks.getOrchestratorSession.mockResolvedValueOnce(session);
+    Object.assign(service as object, {
+      commandExists: vi.fn().mockResolvedValue(true),
+      runGitCommand: vi.fn().mockRejectedValue({
+        code: 128,
+        stderr: "fatal: not a git repository",
+      }),
+    });
+
+    await expect(service.getSessionChanges("session-1")).resolves.toEqual({
+      state: "non-git",
+      projectPath: "/tmp/project",
+      repositoryRoot: undefined,
+      files: [],
+      message: "This project path is not inside a git repository.",
+    });
+  });
+});
+
+describe("TmuxOrchestratorService.getSessionChangeDiff", () => {
+  it("loads an inline diff for a selected changed file", async () => {
+    const session: OrchestratorSession = {
+      sessionId: "session-1",
+      agentId: "copilot-orchestrator",
+      title: "Repo support",
+      startedAt: "2026-03-20T12:00:00Z",
+      updatedAt: "2026-03-20T12:05:00Z",
+      summary: "Handle runtime support work",
+      projectPath: "/tmp/project",
+      projectPurpose: "Handle runtime support work",
+      model: "gpt-5.4",
+      tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      tmuxWindowName: "project-repo-support-0001",
+      tmuxPaneId: "%42",
+      status: "idle",
+      activeJobId: undefined,
+      lastJobId: undefined,
+      availableCustomAgents: [],
+      selectedCustomAgentId: undefined,
+      sessionDirectory: "/tmp/orchestrator/session-1",
+      manifestPath:
+        "agents/copilot-orchestrator/history/2026-03/session-1/SESSION.md",
+      jobs: [],
+      terminalTail: "",
+      logSize: 0,
+    };
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp" } as never,
+      "/tmp"
+    );
+    const runGitCommand = vi
+      .fn()
+      .mockResolvedValueOnce({ stdout: "/tmp/project\n", stderr: "" })
+      .mockResolvedValueOnce({
+        stdout: "?? notes.md\n",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        stdout: "1\t0\tnotes.md\n",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        stdout: [
+          "diff --git a/notes.md b/notes.md",
+          "new file mode 100644",
+          "--- /dev/null",
+          "+++ b/notes.md",
+          "@@ -0,0 +1 @@",
+          "+hello",
+          "",
+        ].join("\n"),
+        stderr: "",
+      });
+
+    storeMocks.getOrchestratorSession.mockResolvedValueOnce(session);
+    Object.assign(service as object, {
+      commandExists: vi.fn().mockResolvedValue(true),
+      runGitCommand,
+    });
+
+    await expect(
+      service.getSessionChangeDiff("session-1", "notes.md")
+    ).resolves.toEqual({
+      state: "ready",
+      projectPath: "/tmp/project",
+      repositoryRoot: "/tmp/project",
+      path: "notes.md",
+      diff: [
+        "diff --git a/notes.md b/notes.md",
+        "new file mode 100644",
+        "--- /dev/null",
+        "+++ b/notes.md",
+        "@@ -0,0 +1 @@",
+        "+hello",
+        "",
+      ].join("\n"),
+      structured: {
+        oldPath: undefined,
+        newPath: "notes.md",
+        headerLines: [
+          "diff --git a/notes.md b/notes.md",
+          "new file mode 100644",
+          "--- /dev/null",
+          "+++ b/notes.md",
+        ],
+        hunks: [
+          {
+            header: "@@ -0,0 +1 @@",
+            lines: [
+              {
+                kind: "add",
+                content: "hello",
+                oldLineNumber: undefined,
+                newLineNumber: 1,
+              },
+            ],
+          },
+        ],
+        isBinary: false,
+        hasText: true,
+      },
+      message: undefined,
+    });
+    expect(runGitCommand).toHaveBeenNthCalledWith(
+      4,
+      ["diff", "--no-index", "--no-color", "--", "/dev/null", "notes.md"],
+      "/tmp/project",
+      [0, 1]
+    );
+  });
+});
+
+describe("TmuxOrchestratorService.updateSession", () => {
+  it("updates the saved title and model and renames the tmux window", async () => {
+    const existingSession: OrchestratorSession = {
+      sessionId: "session-1",
+      agentId: "copilot-orchestrator",
+      title: "Repo support",
+      startedAt: "2026-03-20T12:00:00Z",
+      updatedAt: "2026-03-20T12:05:00Z",
+      summary: "Handle runtime support work",
+      projectPath: "/tmp/project",
+      projectPurpose: "Handle runtime support work",
+      model: "gpt-5.4",
+      tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      tmuxWindowName: "project-repo-support-0001",
+      tmuxPaneId: "%42",
+      status: "idle",
+      activeJobId: undefined,
+      lastJobId: undefined,
+      availableCustomAgents: [],
+      selectedCustomAgentId: undefined,
+      sessionDirectory: "/tmp/orchestrator/session-1",
+      manifestPath:
+        "agents/copilot-orchestrator/history/2026-03/session-1/SESSION.md",
+      jobs: [],
+      terminalTail: "",
+      logSize: 0,
+    };
+    const updatedSession: OrchestratorSession = {
+      ...existingSession,
+      title: "Payments platform",
+      model: "claude-sonnet-4.6",
+      tmuxWindowName: "project-payments-platform-on",
+    };
+
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp" } as never,
+      "/tmp"
+    );
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce(existingSession)
+      .mockResolvedValueOnce(updatedSession);
+    const runTmux = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
+
+    Object.assign(service as object, {
+      getSession,
+      commandExists: vi.fn().mockResolvedValue(true),
+      tmuxPaneExists: vi.fn().mockResolvedValue(true),
+      readTmuxValue: vi.fn().mockResolvedValue("@7"),
+      runTmux,
+    });
+
+    const result = await service.updateSession("session-1", {
+      title: "Payments platform",
+      model: "claude-sonnet-4.6",
+    });
+
+    expect(runTmux).toHaveBeenCalledWith([
+      "rename-window",
+      "-t",
+      "@7",
+      "project-payments-platform-on",
+    ]);
+    expect(storeMocks.updateOrchestratorSession).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1",
+      {
+        title: "Payments platform",
+        cliProvider: "copilot",
+        model: "claude-sonnet-4.6",
+        availableCustomAgents: [],
+        selectedCustomAgentId: undefined,
+        executionMode: "standard",
+        tmuxWindowName: "project-payments-platform-on",
+      }
+    );
+    expect(result).toEqual(updatedSession);
+  });
+});

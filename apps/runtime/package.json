@@ -1,0 +1,24 @@
+{
+  "name": "@coding-agent-orchestrator/runtime",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --out-dir dist",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx dist/index.js"
+  },
+  "dependencies": {
+    "@coding-agent-orchestrator/shared": "workspace:*",
+    "@coding-agent-orchestrator/store": "workspace:*",
+    "@hono/node-server": "latest",
+    "hono": "latest",
+    "luxon": "^3.7.2",
+    "nodemailer": "^8.0.7"
+  },
+  "devDependencies": {
+    "@types/luxon": "^3.7.1",
+    "@types/nodemailer": "^8.0.0"
+  }
+}

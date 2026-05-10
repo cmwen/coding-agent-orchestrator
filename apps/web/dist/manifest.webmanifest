@@ -1,0 +1,1 @@
+{"name":"coding-agent-orchestrator","short_name":"Agent Orchestrator","description":"Local tmux-backed Coding Agent CLI orchestrator.","start_url":"/","display":"standalone","background_color":"#101828","theme_color":"#101828","lang":"en","scope":"/","icons":[{"src":"/favicon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}

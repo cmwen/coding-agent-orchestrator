@@ -1,0 +1,9 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/shared" },
+    { "path": "./packages/store" },
+    { "path": "./apps/runtime" },
+    { "path": "./apps/web" }
+  ]
+}
