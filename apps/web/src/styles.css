@@ -2700,6 +2700,11 @@ p {
   gap: 12px;
 }
 
+.orchestrator-brand > div:first-child {
+  min-width: 0;
+  flex: 1;
+}
+
 .orchestrator-brand h1 {
   margin: 4px 0 0;
   font-size: 1.1rem;
@@ -2767,6 +2772,7 @@ p {
     grid-template-rows: auto 1fr;
     min-height: 100dvh;
     overflow: visible;
+    width: 100%;
   }
 
   .orchestrator-sidebar {
@@ -2776,16 +2782,25 @@ p {
     overflow-y: visible;
     overflow-x: clip;
     padding: 14px;
+    width: 100%;
+    max-width: 100%;
   }
 
   .orchestrator-brand {
     flex-direction: column;
     gap: 8px;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .orchestrator-brand > div:first-child {
+    min-width: 0;
+    width: 100%;
   }
 
   .orchestrator-brand > div:last-child {
-    display: flex;
-    flex-wrap: wrap;
+    display: flex !important;
+    flex-wrap: wrap !important;
     gap: 6px;
   }
 
@@ -2793,10 +2808,16 @@ p {
     padding: 0.45rem 0.75rem;
     font-size: 0.875rem;
     border-radius: 10px;
+    min-width: auto !important;
+    flex-shrink: 1;
   }
 
   .orchestrator-brand h1 {
-    font-size: 1rem;
+    font-size: 0.95rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .orchestrator-session-list {
