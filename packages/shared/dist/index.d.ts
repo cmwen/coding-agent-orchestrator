@@ -1018,6 +1018,7 @@ declare const orchestratorJobSchema: z.ZodObject<{
     jobId: z.ZodString;
     sessionId: z.ZodString;
     scheduleId: z.ZodOptional<z.ZodString>;
+    providerSessionId: z.ZodOptional<z.ZodString>;
     prompt: z.ZodOptional<z.ZodString>;
     promptPreview: z.ZodString;
     promptMode: z.ZodEnum<{
@@ -1092,6 +1093,7 @@ declare const orchestratorSessionSummarySchema: z.ZodObject<{
         path: z.ZodString;
     }, z.core.$strip>>>;
     selectedCustomAgentId: z.ZodOptional<z.ZodString>;
+    providerSessionId: z.ZodOptional<z.ZodString>;
     executionMode: z.ZodOptional<z.ZodEnum<{
         standard: "standard";
         fleet: "fleet";
@@ -1137,6 +1139,7 @@ declare const orchestratorSessionSchema: z.ZodObject<{
         path: z.ZodString;
     }, z.core.$strip>>>;
     selectedCustomAgentId: z.ZodOptional<z.ZodString>;
+    providerSessionId: z.ZodOptional<z.ZodString>;
     executionMode: z.ZodOptional<z.ZodEnum<{
         standard: "standard";
         fleet: "fleet";
@@ -1154,6 +1157,7 @@ declare const orchestratorSessionSchema: z.ZodObject<{
         jobId: z.ZodString;
         sessionId: z.ZodString;
         scheduleId: z.ZodOptional<z.ZodString>;
+        providerSessionId: z.ZodOptional<z.ZodString>;
         prompt: z.ZodOptional<z.ZodString>;
         promptPreview: z.ZodString;
         promptMode: z.ZodEnum<{
@@ -2114,6 +2118,7 @@ declare const orchestratorSessionCreateSchema: z.ZodObject<{
     cliProvider: z.ZodOptional<z.ZodString>;
     model: z.ZodDefault<z.ZodString>;
     selectedCustomAgentId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    providerSessionId: z.ZodOptional<z.ZodString>;
     executionMode: z.ZodOptional<z.ZodEnum<{
         standard: "standard";
         fleet: "fleet";
@@ -2127,6 +2132,7 @@ declare const orchestratorSessionUpdateSchema: z.ZodObject<{
     cliProvider: z.ZodOptional<z.ZodString>;
     model: z.ZodString;
     selectedCustomAgentId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    providerSessionId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     executionMode: z.ZodOptional<z.ZodEnum<{
         standard: "standard";
         fleet: "fleet";
@@ -2137,6 +2143,7 @@ type OrchestratorSessionUpdateRequest = z.infer<typeof orchestratorSessionUpdate
 declare const orchestratorDelegateRequestSchema: z.ZodObject<{
     prompt: z.ZodDefault<z.ZodString>;
     customAgentId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    providerSessionId: z.ZodOptional<z.ZodString>;
     attachment: z.ZodOptional<z.ZodObject<{
         name: z.ZodString;
         contentType: z.ZodString;

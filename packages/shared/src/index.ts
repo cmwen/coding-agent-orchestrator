@@ -526,6 +526,7 @@ export const orchestratorJobSchema = z.object({
   jobId: z.string().min(1),
   sessionId: z.string().min(1),
   scheduleId: z.string().min(1).optional(),
+  providerSessionId: z.string().min(1).optional(),
   prompt: z.string().optional(),
   promptPreview: z.string().min(1),
   promptMode: orchestratorPromptModeSchema,
@@ -562,6 +563,7 @@ export const orchestratorSessionSummarySchema = z.object({
   lastJobId: z.string().min(1).optional(),
   availableCustomAgents: z.array(copilotCustomAgentSchema).default([]),
   selectedCustomAgentId: z.string().min(1).optional(),
+  providerSessionId: z.string().min(1).optional(),
   executionMode: orchestratorExecutionModeSchema.optional(),
   premiumUsage: premiumUsageTotalsSchema.optional(),
   sessionDirectory: z.string().min(1),
@@ -846,6 +848,12 @@ export const orchestratorSessionCreateSchema = z.object({
   cliProvider: z.string().min(1).optional(),
   model: z.string().min(1).default(DEFAULT_CHAT_MODEL),
   selectedCustomAgentId: z.string().trim().min(1).nullable().optional(),
+  providerSessionId: z
+    .string()
+    .trim()
+    .min(1)
+    .regex(/^[a-zA-Z0-9_\-.:.]+$/, "Invalid session ID format")
+    .optional(),
   executionMode: orchestratorExecutionModeSchema.optional(),
   prompt: z.string().min(1).optional(),
 });
@@ -858,6 +866,13 @@ export const orchestratorSessionUpdateSchema = z.object({
   cliProvider: z.string().trim().min(1).optional(),
   model: z.string().trim().min(1),
   selectedCustomAgentId: z.string().trim().min(1).nullable().optional(),
+  providerSessionId: z
+    .string()
+    .trim()
+    .min(1)
+    .regex(/^[a-zA-Z0-9_\-.:.]+$/, "Invalid session ID format")
+    .nullable()
+    .optional(),
   executionMode: orchestratorExecutionModeSchema.optional(),
 });
 export type OrchestratorSessionUpdateRequest = z.infer<
@@ -867,6 +882,12 @@ export type OrchestratorSessionUpdateRequest = z.infer<
 export const orchestratorDelegateRequestSchema = z.object({
   prompt: z.string().default(""),
   customAgentId: z.string().trim().min(1).nullable().optional(),
+  providerSessionId: z
+    .string()
+    .trim()
+    .min(1)
+    .regex(/^[a-zA-Z0-9_\-.:.]+$/, "Invalid session ID format")
+    .optional(),
   attachment: attachmentUploadSchema.optional(),
 });
 export type OrchestratorDelegateRequest = z.infer<

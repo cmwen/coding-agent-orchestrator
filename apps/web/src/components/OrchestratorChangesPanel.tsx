@@ -2,6 +2,7 @@ import type {
   OrchestratorWorkingTree,
   OrchestratorWorkingTreeFile,
 } from "@coding-agent-orchestrator/shared";
+import { Modal } from "./Modal";
 
 interface OrchestratorChangesPanelProps {
   open: boolean;
@@ -10,24 +11,28 @@ interface OrchestratorChangesPanelProps {
   loading: boolean;
   error?: string;
   selectedPath?: string;
+  onClose: () => void;
   onSelectFile: (file: OrchestratorWorkingTreeFile) => void;
 }
 
 export function OrchestratorChangesPanel(props: OrchestratorChangesPanelProps) {
   const files = props.workingTree?.files ?? [];
+  const description = props.loading
+    ? "Loading uncommitted changes…"
+    : props.workingTree?.state === "dirty"
+      ? `${files.length} changed file${files.length === 1 ? "" : "s"}`
+      : (props.workingTree?.message ?? "Repository status");
 
   return (
-    <div
-      id={props.panelId}
-      className="runtime-panel orchestrator-changes-panel"
-      data-state={props.open ? "open" : "closed"}
-      role="dialog"
-      aria-label="Local changes"
-      aria-hidden={!props.open}
+    <Modal
+      open={props.open}
+      title="Local changes"
+      description={description}
+      className="orchestrator-changes-panel"
+      onClose={props.onClose}
     >
-      <div className="settings-card">
+      <div id={props.panelId} className="orchestrator-changes-modal-body">
         <div className="orchestrator-working-tree-header">
-          <span className="panel-caption">Local changes</span>
           <span className="panel-caption">
             {props.loading
               ? "Loading…"
@@ -84,7 +89,7 @@ export function OrchestratorChangesPanel(props: OrchestratorChangesPanelProps) {
           </div>
         ) : null}
       </div>
-    </div>
+    </Modal>
   );
 }
 

@@ -55,6 +55,7 @@ declare const storedOrchestratorSessionStateSchema: zod.ZodObject<{
         path: zod.ZodString;
     }, zod_v4_core.$strip>>>;
     selectedCustomAgentId: zod.ZodOptional<zod.ZodString>;
+    providerSessionId: zod.ZodOptional<zod.ZodString>;
     executionMode: zod.ZodOptional<zod.ZodEnum<{
         standard: "standard";
         fleet: "fleet";
@@ -78,6 +79,7 @@ interface CreateOrchestratorSessionInput {
     model?: string;
     availableCustomAgents?: CopilotCustomAgent[];
     selectedCustomAgentId?: string;
+    providerSessionId?: string;
     executionMode?: OrchestratorExecutionMode;
     tmuxSessionName: string;
     tmuxWindowName: string;
@@ -92,6 +94,7 @@ interface CreateOrchestratorJobInput {
     outputPath?: string;
     attachment?: AttachmentUpload;
     customAgentId?: string;
+    providerSessionId?: string;
     scheduleId?: string;
     premiumUsage?: PremiumUsage;
     submittedAt?: string;

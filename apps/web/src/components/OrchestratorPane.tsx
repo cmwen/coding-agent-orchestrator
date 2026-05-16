@@ -55,8 +55,12 @@ interface OrchestratorPaneProps {
   onCreateSession: (request: OrchestratorSessionCreateRequest) => void;
   onUpdateSession: (request: OrchestratorSessionUpdateRequest) => void;
   onSelectSession?: (sessionId: string) => void;
-  onDeleteOlderDuplicates?: (sessionIds: string[]) => void;
-  onDelegate: (request: { prompt: string; attachment?: File }) => void;
+  onDeleteOlderDuplicate?: (sessionId: string) => void;
+  onDelegate: (request: {
+    prompt: string;
+    attachment?: File;
+    providerSessionId?: string;
+  }) => void;
   onSendInput: (input: string, submit: boolean) => void;
   onCancelJob: () => void;
   onRestartSession: () => void;
@@ -111,6 +115,113 @@ function executionModeCommandHint(mode?: OrchestratorExecutionMode): string {
   return "-p ...";
 }
 
+function supportsProviderSessionResume(cliProvider?: string): boolean {
+  return (
+    cliProvider === "copilot" ||
+    cliProvider === "gemini" ||
+    cliProvider === "codex" ||
+    cliProvider === "opencode"
+  );
+}
+
+function providerSessionFieldNote(
+  cliProvider?: string,
+  orchestratorSessionId?: string
+): string {
+  if (cliProvider === "copilot") {
+    return orchestratorSessionId
+      ? "Set a default Copilot coding agent session ID only if future delegated jobs should keep resuming the same conversation."
+      : "Optional existing Copilot coding agent session ID to resume after the orchestrator session is created.";
+  }
+  if (cliProvider === "gemini") {
+    return "Paste an existing Gemini coding agent session ID to continue that conversation on delegated jobs.";
+  }
+  if (cliProvider === "codex") {
+    return "Paste an existing Codex coding agent session ID or thread name to resume it on delegated jobs.";
+  }
+  if (cliProvider === "opencode") {
+    return "Paste an existing OpenCode coding agent session ID to continue it on delegated jobs.";
+  }
+  return "Optional coding agent session ID for future delegated jobs.";
+}
+
+function buildDelegationCommandHint(
+  session: OrchestratorSession,
+  providerSessionId?: string
+): string {
+  const cliProvider = session.cliProvider ?? "copilot";
+  const effectiveProviderSessionId =
+    providerSessionId?.trim() || session.providerSessionId;
+  if (cliProvider === "gemini") {
+    return `gemini --model ${session.model}${effectiveProviderSessionId ? ` --resume ${effectiveProviderSessionId}` : ""} --yolo ${executionModeCommandHint()}`;
+  }
+  if (cliProvider === "codex") {
+    return effectiveProviderSessionId
+      ? `codex resume --model ${session.model} ${effectiveProviderSessionId} ...`
+      : `codex --model ${session.model} --approval-mode full-auto ...`;
+  }
+  if (cliProvider === "opencode") {
+    return `opencode run --model ${session.model}${effectiveProviderSessionId ? ` --session ${effectiveProviderSessionId}` : ""} -p ...`;
+  }
+  const sessionFlag = effectiveProviderSessionId
+    ? ` --resume ${effectiveProviderSessionId}`
+    : "";
+  return `copilot --model ${session.model}${session.selectedCustomAgentId ? ` --agent ${session.selectedCustomAgentId}` : ""}${session.executionMode === "auto" ? " --mode autopilot" : ""}${sessionFlag} --yolo ${executionModeCommandHint(session.executionMode)}`;
+}
+
+function normalizeProviderSessionId(
+  providerSessionId: string | undefined
+): string | undefined {
+  const normalized = providerSessionId?.trim();
+  return normalized ? normalized : undefined;
+}
+
+function getJobProviderSessionTimestamp(job: OrchestratorJob): string {
+  return job.completedAt ?? job.startedAt ?? job.submittedAt;
+}
+
+function getLatestKnownProviderSession(session?: OrchestratorSession): {
+  providerSessionId: string;
+  source: "saved-default" | "recent-job";
+  job?: OrchestratorJob;
+} | null {
+  if (!session) {
+    return null;
+  }
+
+  const jobsWithProviderSession = session.jobs
+    .filter(
+      (job): job is OrchestratorJob & { providerSessionId: string } =>
+        !!normalizeProviderSessionId(job.providerSessionId)
+    )
+    .sort((left, right) =>
+      getJobProviderSessionTimestamp(right).localeCompare(
+        getJobProviderSessionTimestamp(left)
+      )
+    );
+
+  const latestJob = jobsWithProviderSession[0];
+  if (latestJob?.providerSessionId) {
+    return {
+      providerSessionId: latestJob.providerSessionId,
+      source: "recent-job",
+      job: latestJob,
+    };
+  }
+
+  const savedProviderSessionId = normalizeProviderSessionId(
+    session.providerSessionId
+  );
+  if (!savedProviderSessionId) {
+    return null;
+  }
+
+  return {
+    providerSessionId: savedProviderSessionId,
+    source: "saved-default",
+  };
+}
+
 export function OrchestratorPane(props: OrchestratorPaneProps) {
   const defaultCliProvider =
     props.defaultCliProvider ??
@@ -124,7 +235,10 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
   const [modelId, setModelId] = useState(props.defaultModelId);
   const [projectPurpose, setProjectPurpose] = useState("");
   const [initialPrompt, setInitialPrompt] = useState("");
+  const [providerSessionId, setProviderSessionId] = useState("");
   const [delegatePrompt, setDelegatePrompt] = useState("");
+  const [delegateProviderSessionId, setDelegateProviderSessionId] =
+    useState("");
   const [delegateAttachment, setDelegateAttachment] = useState<
     File | undefined
   >();
@@ -138,6 +252,9 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
   );
   const [sessionCustomAgentId, setSessionCustomAgentId] = useState(
     props.session?.selectedCustomAgentId ?? ""
+  );
+  const [sessionProviderSessionId, setSessionProviderSessionId] = useState(
+    props.session?.providerSessionId ?? ""
   );
   const [executionMode, setExecutionMode] = useState(
     props.session?.executionMode ?? "standard"
@@ -180,7 +297,6 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
   const [diffModalOpen, setDiffModalOpen] = useState(false);
   const [streamReconnectToken, setStreamReconnectToken] = useState(0);
   const terminalRef = useRef<HTMLDivElement>(null);
-  const changesPanelRef = useRef<HTMLDivElement>(null);
   const sessionUpdateRef = useRef(props.onSessionUpdate);
   const streamOffsetRef = useRef(props.session?.logSize ?? 0);
   const reconnectTimeoutRef = useRef<number | undefined>(undefined);
@@ -355,6 +471,9 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
         (session) => session.sessionId !== latestMatchingSession.sessionId
       )
     : [];
+  const latestMatchingProviderSession = getLatestKnownProviderSession(
+    latestMatchingSession
+  );
   const hasCreateDuplicate = !props.session && matchingSessions.length > 0;
   const selectedSessionHasDuplicates =
     !!props.session && matchingSessions.length > 1;
@@ -367,6 +486,12 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
     latestMatchingSession?.sessionId !== props.session.sessionId
       ? latestMatchingSession
       : undefined;
+  const latestKnownProviderSession = getLatestKnownProviderSession(
+    props.session
+  );
+  const savedProviderSessionId = normalizeProviderSessionId(
+    props.session?.providerSessionId
+  );
 
   useEffect(() => {
     const defaultProjectPath = props.capabilities?.defaultProjectPath;
@@ -401,6 +526,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
 
   useEffect(() => {
     setDelegatePrompt("");
+    setDelegateProviderSessionId("");
     setDelegateAttachment(undefined);
     setTerminalInput("");
     scrollBehaviorRef.current = "bottom";
@@ -428,6 +554,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
       setSessionCliProvider(defaultCliProvider);
       setSessionModelId(props.defaultModelId);
       setSessionCustomAgentId("");
+      setSessionProviderSessionId("");
       setExecutionMode("standard");
       setSettingsOpen(false);
       return;
@@ -436,12 +563,14 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
     setSessionCliProvider(props.session.cliProvider ?? defaultCliProvider);
     setSessionModelId(props.session.model);
     setSessionCustomAgentId(props.session.selectedCustomAgentId ?? "");
+    setSessionProviderSessionId(props.session.providerSessionId ?? "");
     setExecutionMode(props.session.executionMode ?? "standard");
   }, [
     defaultCliProvider,
     props.defaultModelId,
     props.session?.cliProvider,
     props.session?.executionMode,
+    props.session?.providerSessionId,
     props.session?.selectedCustomAgentId,
     props.session?.model,
     props.session?.sessionId,
@@ -481,35 +610,6 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
   useEffect(() => {
     sessionUpdateRef.current = props.onSessionUpdate;
   }, [props.onSessionUpdate]);
-
-  useEffect(() => {
-    if (!changesPanelOpen || diffModalOpen) {
-      return;
-    }
-
-    const container = changesPanelRef.current;
-    if (!container) {
-      return;
-    }
-
-    const handleDocumentMouseDown = (event: MouseEvent) => {
-      if (!container.contains(event.target as Node)) {
-        setChangesPanelOpen(false);
-      }
-    };
-    const handleDocumentKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setChangesPanelOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleDocumentMouseDown);
-    document.addEventListener("keydown", handleDocumentKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handleDocumentMouseDown);
-      document.removeEventListener("keydown", handleDocumentKeyDown);
-    };
-  }, [changesPanelOpen, diffModalOpen]);
 
   useEffect(() => {
     if (!props.session) {
@@ -713,6 +813,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
     setSelectedChangeDiff(undefined);
     setSelectedChangeDiffLoading(true);
     setSelectedChangeDiffError(undefined);
+    setChangesPanelOpen(false);
     setDiffModalOpen(true);
 
     try {
@@ -837,6 +938,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
       sessionCliProvider !== props.session.cliProvider ||
       sessionModelId !== props.session.model ||
       sessionCustomAgentId !== (props.session.selectedCustomAgentId ?? "") ||
+      sessionProviderSessionId !== (props.session.providerSessionId ?? "") ||
       executionMode !== props.session.executionMode);
   const canSaveSessionDetails =
     !!props.session &&
@@ -1005,6 +1107,14 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
               )}
               . Open it to keep working in one place, or create another session
               anyway.
+              {latestMatchingProviderSession ? (
+                <>
+                  {" "}
+                  Latest coding agent session ID:{" "}
+                  <code>{latestMatchingProviderSession.providerSessionId}</code>
+                  .
+                </>
+              ) : null}
               {props.onSelectSession ? (
                 <>
                   {" "}
@@ -1016,6 +1126,26 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                     }
                   >
                     Open latest existing session
+                  </button>
+                </>
+              ) : null}
+              {latestMatchingProviderSession ? (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={() =>
+                      setProviderSessionId(
+                        latestMatchingProviderSession.providerSessionId
+                      )
+                    }
+                    disabled={
+                      providerSessionId.trim() ===
+                      latestMatchingProviderSession.providerSessionId
+                    }
+                  >
+                    Continue with previous session ID
                   </button>
                 </>
               ) : null}
@@ -1057,6 +1187,19 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
               placeholder="Optional first task to queue as soon as the session is created."
             />
           </label>
+          {supportsProviderSessionResume(cliProvider) ? (
+            <label className="field-group">
+              <span>Coding agent session ID</span>
+              <input
+                value={providerSessionId}
+                onChange={(event) => setProviderSessionId(event.target.value)}
+                placeholder="Optional existing coding agent session ID"
+              />
+              <small className="field-note">
+                {providerSessionFieldNote(cliProvider)}
+              </small>
+            </label>
+          ) : null}
           {props.error ? (
             <div className="error-row" role="alert">
               {props.error}
@@ -1071,6 +1214,12 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
               <span>
                 Model: {selectedNewSessionModel?.displayName ?? modelId}
               </span>
+              {supportsProviderSessionResume(cliProvider) ? (
+                <span>
+                  Coding agent session ID:{" "}
+                  {providerSessionId.trim() || "not set"}
+                </span>
+              ) : null}
               <span>Mode: {executionModeLabel(executionMode)}</span>
               <span>tmux-backed</span>
               <span>Async only</span>
@@ -1092,6 +1241,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                   projectPurpose: projectPurpose.trim(),
                   cliProvider,
                   model: modelId,
+                  providerSessionId: providerSessionId.trim() || undefined,
                   executionMode,
                   prompt: initialPrompt.trim() || undefined,
                 })
@@ -1142,22 +1292,20 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                   </>
                 ) : null}
                 {selectedSessionIsLatestDuplicate &&
-                props.onDeleteOlderDuplicates ? (
+                olderMatchingSessions.length === 1 &&
+                props.onDeleteOlderDuplicate ? (
                   <>
                     {" "}
                     <button
                       type="button"
                       className="ghost-button danger-button"
                       onClick={() =>
-                        props.onDeleteOlderDuplicates?.(
-                          olderMatchingSessions.map(
-                            (session) => session.sessionId
-                          )
+                        props.onDeleteOlderDuplicate?.(
+                          olderMatchingSessions[0]?.sessionId ?? ""
                         )
                       }
                     >
-                      Remove {olderMatchingSessions.length} older duplicate
-                      {olderMatchingSessions.length === 1 ? "" : "s"}
+                      Remove older duplicate
                     </button>
                   </>
                 ) : null}
@@ -1174,6 +1322,22 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                 Model:{" "}
                 {selectedSavedSessionModel?.displayName ?? props.session.model}
               </span>
+              {latestKnownProviderSession ? (
+                <span>
+                  {latestKnownProviderSession.source === "recent-job"
+                    ? "Latest coding agent session ID"
+                    : "Coding agent session ID"}
+                  : {latestKnownProviderSession.providerSessionId}
+                </span>
+              ) : null}
+              {savedProviderSessionId &&
+              latestKnownProviderSession?.providerSessionId !==
+                savedProviderSessionId ? (
+                <span>
+                  Saved default coding agent session ID:{" "}
+                  {savedProviderSessionId}
+                </span>
+              ) : null}
               <span>
                 Custom agent: {selectedSavedCustomAgent?.name ?? "None"}
               </span>
@@ -1203,11 +1367,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
               </span>
             </div>
           </div>
-          <div
-            className="orchestrator-session-actions"
-            ref={changesPanelRef}
-            aria-live="polite"
-          >
+          <div className="orchestrator-session-actions" aria-live="polite">
             <div className="runtime-control orchestrator-changes-control">
               <button
                 type="button"
@@ -1253,6 +1413,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                 loading={workingTreeLoading}
                 error={workingTreeError}
                 selectedPath={selectedChangePath}
+                onClose={() => setChangesPanelOpen(false)}
                 onSelectFile={(file) => void handleSelectChangedFile(file)}
               />
             </div>
@@ -1383,6 +1544,24 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                       : "No `.agent.md` files were discovered in the project path when this session was created."}
                 </small>
               </label>
+              {supportsProviderSessionResume(sessionCliProvider) ? (
+                <label className="field-group">
+                  <span>Coding agent session ID</span>
+                  <input
+                    value={sessionProviderSessionId}
+                    onChange={(event) =>
+                      setSessionProviderSessionId(event.target.value)
+                    }
+                    placeholder="Optional existing coding agent session ID"
+                  />
+                  <small className="field-note">
+                    {providerSessionFieldNote(
+                      sessionCliProvider,
+                      props.session.sessionId
+                    )}
+                  </small>
+                </label>
+              ) : null}
               <label className="field-group">
                 <span>Execution mode</span>
                 <select
@@ -1434,6 +1613,12 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                   Custom agent:{" "}
                   {selectedSessionDraftCustomAgent?.name ?? "None"}
                 </span>
+                {supportsProviderSessionResume(sessionCliProvider) ? (
+                  <span>
+                    Saved default coding agent session ID:{" "}
+                    {sessionProviderSessionId.trim() || "not set"}
+                  </span>
+                ) : null}
                 <span>Mode: {executionModeLabel(executionMode)}</span>
                 <span>Applies to future delegated jobs</span>
               </div>
@@ -1442,15 +1627,17 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                 className="primary-button"
                 aria-label="Save details"
                 disabled={!canSaveSessionDetails}
-                onClick={() =>
+                onClick={() => {
+                  setSettingsOpen(false);
                   props.onUpdateSession({
                     title: sessionTitle.trim(),
                     cliProvider: sessionCliProvider,
                     model: sessionModelId,
                     selectedCustomAgentId: sessionCustomAgentId || null,
+                    providerSessionId: sessionProviderSessionId.trim() || null,
                     executionMode,
-                  })
-                }
+                  });
+                }}
               >
                 <ButtonContent
                   icon={<SaveIcon />}
@@ -1523,6 +1710,14 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                           {humanizeJobStatus(job.status)}
                         </span>
                         <strong>{job.promptPreview}</strong>
+                        {job.providerSessionId ? (
+                          <span
+                            className="panel-caption orchestrator-job-session-id"
+                            title={job.providerSessionId}
+                          >
+                            Coding agent session ID: {job.providerSessionId}
+                          </span>
+                        ) : null}
                         {job.attachment ? (
                           <span className="panel-caption">
                             {job.attachment.name}
@@ -1551,6 +1746,25 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                             disabled={props.pending || !props.onRetryFailedJob}
                           >
                             Retry
+                          </button>
+                        ) : null}
+                        {job.status !== "queued" &&
+                        job.providerSessionId &&
+                        supportsProviderSessionResume(
+                          props.session?.cliProvider
+                        ) ? (
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            aria-label={`Continue task: ${job.promptPreview}`}
+                            onClick={() =>
+                              setDelegateProviderSessionId(
+                                job.providerSessionId ?? ""
+                              )
+                            }
+                            disabled={props.pending}
+                          >
+                            Continue
                           </button>
                         ) : null}
                         {job.status === "queued" ? (
@@ -1807,7 +2021,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
       <div className="orchestrator-control-grid">
         <div className="settings-card orchestrator-primary-action">
           <label className="field-group grow">
-            <span>Delegate a Copilot task</span>
+            <span>Delegate a CLI task</span>
             <SingleAttachmentPicker
               file={delegateAttachment}
               pending={props.pending}
@@ -1824,17 +2038,56 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
               }
             />
           </label>
+          {supportsProviderSessionResume(props.session.cliProvider) ? (
+            <label className="field-group">
+              <span>Continue from previous session ID</span>
+              <input
+                value={delegateProviderSessionId}
+                onChange={(event) =>
+                  setDelegateProviderSessionId(event.target.value)
+                }
+                placeholder="Leave blank to start a fresh task session"
+              />
+              <small className="field-note">
+                {delegateProviderSessionId.trim()
+                  ? "Used only for the next delegated task."
+                  : props.session.providerSessionId
+                    ? `Blank uses the saved default coding agent session ${props.session.providerSessionId}.`
+                    : "Use Continue from the task queue or a previous matching session to reuse an earlier coding agent session without changing future defaults."}
+              </small>
+            </label>
+          ) : null}
           <div className="composer-footer orchestrator-delegate-footer">
             <div className="composer-meta">
               <span className="orchestrator-command-hint">
                 Uses{" "}
                 <code>
-                  {`copilot --model ${props.session.model}${props.session.selectedCustomAgentId ? ` --agent ${props.session.selectedCustomAgentId}` : ""} --yolo ${executionModeCommandHint(props.session.executionMode)}`}
+                  {buildDelegationCommandHint(
+                    props.session,
+                    delegateProviderSessionId
+                  )}
                 </code>
               </span>
               <span>
                 Custom agent: {selectedSavedCustomAgent?.name ?? "None"}
               </span>
+              {delegateProviderSessionId.trim() ? (
+                <span>
+                  Next task resumes coding agent session{" "}
+                  {delegateProviderSessionId.trim()}
+                </span>
+              ) : props.session.providerSessionId ? (
+                <span>
+                  Uses saved default coding agent session{" "}
+                  {props.session.providerSessionId}
+                </span>
+              ) : supportsProviderSessionResume(props.session.cliProvider) ? (
+                <span>
+                  {props.session.cliProvider === "copilot"
+                    ? "Blank starts a fresh Copilot task session."
+                    : "Set a coding agent session ID to continue an existing conversation."}
+                </span>
+              ) : null}
               <span>
                 {activeJob
                   ? `${queuedJobs.length} already queued • starts automatically when the pane is free`
@@ -1852,8 +2105,11 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                 props.onDelegate({
                   prompt: delegatePrompt.trim(),
                   attachment: delegateAttachment,
+                  providerSessionId:
+                    delegateProviderSessionId.trim() || undefined,
                 });
                 setDelegatePrompt("");
+                setDelegateProviderSessionId("");
                 setDelegateAttachment(undefined);
               }}
             >

@@ -37,7 +37,9 @@ The app has three layers:
 
 `ORCHESTRATOR.json` is the mutable session state. `SESSION.md` is a readable
 manifest. `DONE.json` is the durable completion signal written by the tmux-run
-script.
+script. `ORCHESTRATOR.json` can also persist an optional `providerSessionId`
+used to resume provider-native CLI conversations across delegated jobs, and
+each `JOB.json` records the provider session ID that was used for that run.
 
 ## tmux Model
 
@@ -81,4 +83,3 @@ durability through restarts. Dispatched jobs carry `masterBatchId` and
 `masterItemId` fields in their `JOB.json` for traceability.
 
 Full design, UX wireframes, and technical spec: [`MASTER-SESSION.md`](./MASTER-SESSION.md).
-

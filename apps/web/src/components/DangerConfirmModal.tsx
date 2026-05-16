@@ -54,6 +54,7 @@ export function DangerConfirmModal(props: DangerConfirmModalProps) {
           className="ghost-button"
           onClick={props.onClose}
           disabled={props.busy}
+          data-autofocus="true"
         >
           Keep it
         </button>
@@ -62,7 +63,6 @@ export function DangerConfirmModal(props: DangerConfirmModalProps) {
           className="ghost-button danger-button"
           onClick={props.onConfirm}
           disabled={!acknowledged || props.busy}
-          data-autofocus="true"
         >
           {props.busy
             ? (props.busyLabel ?? props.confirmLabel)

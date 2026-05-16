@@ -1359,7 +1359,13 @@ p {
 }
 
 .orchestrator-changes-panel {
-  width: min(460px, 92vw);
+  width: min(460px, calc(100vw - 2rem));
+}
+
+.orchestrator-changes-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
 }
 
 .orchestrator-working-tree-header {
@@ -1800,6 +1806,10 @@ p {
 
 .orchestrator-job-title strong {
   min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.orchestrator-job-session-id {
   overflow-wrap: anywhere;
 }
 
@@ -2682,6 +2692,7 @@ p {
 }
 
 .orchestrator-sidebar {
+  min-width: 0;
   min-height: 0;
   border-right: 1px solid var(--sidebar-border, var(--border-soft));
   background: var(--sidebar-bg, var(--panel-bg));
@@ -2698,6 +2709,22 @@ p {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.orchestrator-brand-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.orchestrator-icon-button {
+  min-width: auto;
+  padding: 0.65rem;
+}
+
+.orchestrator-icon-button svg {
+  width: 1rem;
+  height: 1rem;
 }
 
 .orchestrator-brand > div:first-child {
@@ -2722,8 +2749,32 @@ p {
 .orchestrator-session-list {
   display: grid;
   gap: 8px;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
   overflow: auto;
   padding-right: 2px;
+}
+
+.orchestrator-sidebar-section {
+  display: grid;
+  gap: 8px;
+}
+
+.orchestrator-new-session-link {
+  border-style: dashed;
+  background: color-mix(in srgb, var(--card-strong) 86%, transparent);
+}
+
+.orchestrator-session-list-meta {
+  padding: 0 0.2rem;
+}
+
+.orchestrator-session-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 0.65rem;
 }
 
 .orchestrator-session-link {
@@ -2755,6 +2806,23 @@ p {
 .orchestrator-session-link small {
   color: var(--sidebar-meta-color, var(--text-muted));
   line-height: 1.35;
+}
+
+.orchestrator-session-delete-button {
+  min-width: auto;
+  align-self: stretch;
+  padding: 0.65rem;
+  opacity: 0;
+}
+
+.orchestrator-session-delete-button svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.orchestrator-session-row:hover .orchestrator-session-delete-button,
+.orchestrator-session-row:focus-within .orchestrator-session-delete-button {
+  opacity: 1;
 }
 
 .orchestrator-main {
@@ -2799,16 +2867,13 @@ p {
   }
 
   .orchestrator-brand > div:last-child {
-    display: flex !important;
-    flex-wrap: wrap !important;
+    display: flex;
+    flex-wrap: wrap;
     gap: 6px;
   }
 
   .orchestrator-brand .ghost-button {
-    padding: 0.45rem 0.75rem;
-    font-size: 0.875rem;
     border-radius: 10px;
-    min-width: auto !important;
     flex-shrink: 1;
   }
 
@@ -2822,9 +2887,18 @@ p {
 
   .orchestrator-session-list {
     grid-auto-flow: column;
-    grid-auto-columns: minmax(200px, 72vw);
+    grid-auto-columns: minmax(220px, 78vw);
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+  }
+
+  .orchestrator-session-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-width: min(220px, 78vw);
+  }
+
+  .orchestrator-session-delete-button {
+    opacity: 1;
   }
 
   .orchestrator-main {

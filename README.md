@@ -84,6 +84,26 @@ Orchestrator sessions are stored under:
 agents/copilot-orchestrator/history/YYYY-MM/<session-id>/
 ```
 
+## Session continuation
+
+Orchestrator sessions can now persist an optional **provider session ID** so
+future delegated jobs can continue the same CLI conversation instead of starting
+from scratch.
+
+- **Copilot**: new orchestrator sessions bootstrap the first delegated job with
+  a stable session name, then capture the real Copilot session ID from CLI
+  output so later delegated jobs can resume the exact prior Copilot session.
+- **Gemini, Codex, OpenCode**: paste an existing provider session ID into the
+  orchestrator create/settings UI to continue that external CLI session on
+  future delegated jobs.
+- **Codex** continuation uses the `codex resume` flow under the hood; the other
+  supported providers use their resume/session flags directly.
+- Clear the provider session ID in session settings to stop targeting a pasted
+  external session. For Copilot, clearing the field falls back to the
+  orchestrator session ID again.
+- The orchestrator task queue shows the provider session ID used for each job so
+  you can verify what context a run is attached to.
+
 ## Commands
 
 - `pnpm dev`

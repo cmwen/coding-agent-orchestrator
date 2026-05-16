@@ -20,6 +20,7 @@ import { api } from "./api";
 import { toAttachmentUpload } from "./attachments";
 import type { CommandPaletteItem } from "./command-palette";
 import { CommandPalette } from "./components/CommandPalette";
+import { DangerConfirmModal } from "./components/DangerConfirmModal";
 import { OrchestratorPane } from "./components/OrchestratorPane";
 
 const DEFAULT_MODEL_ID = "gpt-5-mini";
@@ -248,6 +249,11 @@ export default function App() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [pendingDeleteSessionId, setPendingDeleteSessionId] = useState<
+    string | undefined
+  >();
+  const [removeSessionModalOpen, setRemoveSessionModalOpen] = useState(false);
+  const [removingSessions, setRemovingSessions] = useState(false);
   const sessionNavRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const selectedSession = useMemo(() => {
@@ -275,6 +281,15 @@ export default function App() {
         theme
       ),
     [selectedSession?.sessionId, sessions, theme]
+  );
+  const pendingDeleteSession = useMemo(
+    () =>
+      pendingDeleteSessionId
+        ? sessions.find(
+            (session) => session.sessionId === pendingDeleteSessionId
+          )
+        : undefined,
+    [pendingDeleteSessionId, sessions]
   );
 
   useEffect(() => {
@@ -312,6 +327,16 @@ export default function App() {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("coding-agent-orchestrator:theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (
+      pendingDeleteSessionId &&
+      !sessions.some((session) => session.sessionId === pendingDeleteSessionId)
+    ) {
+      setPendingDeleteSessionId(undefined);
+      setRemoveSessionModalOpen(false);
+    }
+  }, [pendingDeleteSessionId, sessions]);
 
   async function refreshAll() {
     setPending(true);
@@ -450,6 +475,35 @@ export default function App() {
     setCommandPaletteOpen(false);
   }
 
+  function handleOpenRemoveSessionModal(sessionId: string) {
+    setPendingDeleteSessionId(sessionId);
+    setRemoveSessionModalOpen(true);
+  }
+
+  function handleCloseRemoveSessionModal() {
+    setRemoveSessionModalOpen(false);
+    setPendingDeleteSessionId(undefined);
+  }
+
+  async function handleConfirmRemoveSession() {
+    if (!pendingDeleteSession) {
+      return;
+    }
+
+    setRemovingSessions(true);
+    const removedSessionId = await withRefresh(async () => {
+      await api.deleteOrchestratorSession(pendingDeleteSession.sessionId);
+      return pendingDeleteSession.sessionId;
+    });
+    setRemovingSessions(false);
+
+    if (!removedSessionId) {
+      return;
+    }
+
+    handleCloseRemoveSessionModal();
+  }
+
   return (
     <main className="orchestrator-app-shell">
       <aside className="orchestrator-sidebar" aria-label="Sessions">
@@ -458,32 +512,35 @@ export default function App() {
             <div className="eyebrow">Personal PWA</div>
             <h1>Coding Agent CLI Orchestrator</h1>
           </div>
-          <div style={{ display: "flex", gap: "8px" }}>
+          <div className="orchestrator-brand-actions">
             <button
-              className="ghost-button"
+              className="ghost-button orchestrator-icon-button"
               type="button"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
               title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
             >
-              {theme === "dark" ? "☀️" : "🌙"}
+              {theme === "dark" ? <SunIcon /> : <MoonIcon />}
             </button>
             <button
-              className="ghost-button"
+              className="ghost-button orchestrator-icon-button"
               type="button"
               onClick={() => setCommandPaletteOpen(true)}
               aria-label="Open command palette"
               aria-keyshortcuts="Control+K Meta+K"
               title="Open command palette (Cmd/Ctrl+K)"
             >
-              Commands
+              <CommandIcon />
             </button>
             <button
-              className="ghost-button"
+              className="ghost-button orchestrator-icon-button"
               type="button"
               onClick={() => void refreshAll()}
               disabled={pending}
+              aria-label="Refresh sessions"
+              title="Refresh sessions"
             >
-              Refresh
+              <RefreshIcon />
             </button>
           </div>
         </div>
@@ -493,42 +550,64 @@ export default function App() {
           </span>
           <span>{workspace?.storeRoot ?? "Loading store"}</span>
         </div>
-        <button
-          ref={(element) => {
-            sessionNavRefs.current["new-session"] = element;
-          }}
-          className={`orchestrator-session-link ${
-            !selectedSession ? "active" : ""
-          }`}
-          type="button"
-          onClick={() => setSelectedSessionId(undefined)}
-          onKeyDown={(event) => handleSessionNavKeyDown(event, "new-session")}
-        >
-          <span>New session</span>
-          <small>Create a tmux-backed workspace</small>
-        </button>
+        <div className="orchestrator-sidebar-section">
+          <button
+            ref={(element) => {
+              sessionNavRefs.current["new-session"] = element;
+            }}
+            className={`orchestrator-session-link orchestrator-new-session-link ${
+              !selectedSession ? "active" : ""
+            }`}
+            type="button"
+            onClick={() => {
+              setSelectedSessionId(undefined);
+            }}
+            onKeyDown={(event) => handleSessionNavKeyDown(event, "new-session")}
+          >
+            <span>New session</span>
+            <small>Start a fresh tmux-backed workspace</small>
+          </button>
+        </div>
+        <div className="orchestrator-session-list-meta">
+          <span className="panel-caption">
+            {sessions.length} saved session{sessions.length === 1 ? "" : "s"}
+          </span>
+        </div>
         <div className="orchestrator-session-list">
           {sessions.map((session) => (
-            <button
-              ref={(element) => {
-                sessionNavRefs.current[session.sessionId] = element;
-              }}
-              className={`orchestrator-session-link ${
-                session.sessionId === selectedSession?.sessionId ? "active" : ""
-              }`}
-              type="button"
-              key={session.sessionId}
-              onClick={() => setSelectedSessionId(session.sessionId)}
-              onKeyDown={(event) =>
-                handleSessionNavKeyDown(event, session.sessionId)
-              }
-            >
-              <span>{session.title}</span>
-              <small>
-                {session.status} ·{" "}
-                {new Date(session.updatedAt).toLocaleString()}
-              </small>
-            </button>
+            <div className="orchestrator-session-row" key={session.sessionId}>
+              <button
+                ref={(element) => {
+                  sessionNavRefs.current[session.sessionId] = element;
+                }}
+                className={`orchestrator-session-link ${
+                  session.sessionId === selectedSession?.sessionId
+                    ? "active"
+                    : ""
+                }`}
+                type="button"
+                onClick={() => setSelectedSessionId(session.sessionId)}
+                onKeyDown={(event) =>
+                  handleSessionNavKeyDown(event, session.sessionId)
+                }
+              >
+                <span>{session.title}</span>
+                <small>
+                  {session.status} ·{" "}
+                  {new Date(session.updatedAt).toLocaleString()}
+                </small>
+              </button>
+              <button
+                type="button"
+                className="ghost-button danger-button orchestrator-session-delete-button"
+                aria-label={`Delete session: ${session.title}`}
+                title={`Delete ${session.title}`}
+                disabled={pending}
+                onClick={() => handleOpenRemoveSessionModal(session.sessionId)}
+              >
+                <TrashIcon />
+              </button>
+            </div>
           ))}
         </div>
       </aside>
@@ -570,13 +649,9 @@ export default function App() {
             });
           }}
           onSelectSession={setSelectedSessionId}
-          onDeleteOlderDuplicates={(sessionIds) => {
+          onDeleteOlderDuplicate={(sessionId) => {
             void withRefresh(async () => {
-              await Promise.all(
-                sessionIds.map((sessionId) =>
-                  api.deleteOrchestratorSession(sessionId)
-                )
-              );
+              await api.deleteOrchestratorSession(sessionId);
             });
           }}
           onDelegate={(request) => {
@@ -591,6 +666,7 @@ export default function App() {
                 selectedSession.sessionId,
                 {
                   prompt: request.prompt,
+                  providerSessionId: request.providerSessionId,
                   attachment,
                 }
               );
@@ -683,6 +759,29 @@ export default function App() {
         onClose={() => setCommandPaletteOpen(false)}
         onSelect={handlePaletteSelect}
       />
+      <DangerConfirmModal
+        open={removeSessionModalOpen}
+        title="Remove orchestrator session"
+        description={
+          pendingDeleteSession
+            ? `This permanently removes "${pendingDeleteSession.title}" from the app.`
+            : "This permanently removes the selected orchestrator session from the app."
+        }
+        warning={
+          pendingDeleteSession
+            ? `Session history, terminal output, and queued work for "${pendingDeleteSession.title}" will be deleted.`
+            : "Session history, terminal output, and queued work for this session will be deleted."
+        }
+        acknowledgeLabel="I understand this session will be permanently removed."
+        confirmLabel="Remove session"
+        busy={removingSessions}
+        busyLabel="Removing session..."
+        details={
+          pendingDeleteSession ? [pendingDeleteSession.title] : undefined
+        }
+        onClose={handleCloseRemoveSessionModal}
+        onConfirm={() => void handleConfirmRemoveSession()}
+      />
     </main>
   );
 }
@@ -766,4 +865,59 @@ function buildOrchestratorCommandPaletteItems(
     },
     ...sessionItems,
   ];
+}
+
+function SunIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M6.76 4.84 5.35 3.43 3.93 4.84l1.41 1.41 1.42-1.41Zm10.49 0 1.41-1.41 1.42 1.41-1.41 1.41-1.42-1.41ZM12 5a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm0-3h1.5v2.5H12V2Zm0 19.5h1.5V24H12v-2.5ZM2 10.5h2.5V12H2v-1.5Zm19.5 0H24V12h-2.5v-1.5ZM5.34 17.76l-1.41 1.41 1.42 1.4 1.41-1.4-1.42-1.41Zm13.32 0-1.41 1.41 1.41 1.4 1.41-1.4-1.41-1.41Z"
+      />
+    </svg>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M14.53 2.08A9.96 9.96 0 0 0 12 2c-5.52 0-10 4.48-10 10s4.48 10 10 10c4.19 0 7.78-2.58 9.27-6.24A8.5 8.5 0 0 1 14.53 2.08Z"
+      />
+    </svg>
+  );
+}
+
+function CommandIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M9 3a4 4 0 1 0 0 8h1v2H9a4 4 0 1 0 4 4v-1h2v1a4 4 0 1 0 4-4h-1v-2h1a4 4 0 1 0-4-4v1h-2V7a4 4 0 0 0-4-4Zm0 2a2 2 0 1 1 0 4h-1V7a2 2 0 0 1 1-2Zm8 0a2 2 0 1 1-2 2V5h2Zm-7 6h4v2h-4v-2Zm-3 4h1v2a2 2 0 1 1-1-2Zm10 0h2a2 2 0 1 1-2 2v-2Z"
+      />
+    </svg>
+  );
+}
+
+function RefreshIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M12 5a7 7 0 0 1 6.3 3.95L20 6.75V13h-6.25l2.76-2.76A4.99 4.99 0 0 0 7 12a5 5 0 0 0 8.66 3.41l1.42 1.42A7 7 0 1 1 12 5Z"
+      />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-2 6h2v8H7V9Zm4 0h2v8h-2V9Zm4 0h2v8h-2V9ZM6 21a2 2 0 0 1-2-2V7h16v12a2 2 0 0 1-2 2H6Z"
+      />
+    </svg>
+  );
 }

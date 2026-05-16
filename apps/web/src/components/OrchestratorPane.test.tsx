@@ -91,6 +91,7 @@ describe("OrchestratorPane", () => {
       projectPurpose: "Repair the login redirect",
       cliProvider: "copilot",
       model: "claude-sonnet-4.6",
+      providerSessionId: undefined,
       executionMode: "standard",
       prompt: "Investigate the broken redirect flow.",
     });
@@ -193,7 +194,7 @@ describe("OrchestratorPane", () => {
         onCreateSession={() => undefined}
         onUpdateSession={() => undefined}
         onSelectSession={onSelectSession}
-        onDeleteOlderDuplicates={() => undefined}
+        onDeleteOlderDuplicate={() => undefined}
         onDelegate={() => undefined}
         onSendInput={() => undefined}
         onCancelJob={() => undefined}
@@ -221,6 +222,125 @@ describe("OrchestratorPane", () => {
     );
 
     expect(onSelectSession).toHaveBeenCalledWith("latest-match");
+  });
+
+  it("lets users continue with the previous coding agent session ID from a matching session", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <OrchestratorPane
+        capabilities={{
+          available: true,
+          defaultProjectPath: "/tmp/project/",
+          recentProjectPaths: [],
+          tmuxInstalled: true,
+          copilotInstalled: true,
+          geminiInstalled: false,
+          defaultCliProvider: "copilot",
+          cliProviders: [
+            {
+              id: "copilot",
+              displayName: "GitHub Copilot CLI",
+              description: "Uses the installed copilot CLI.",
+              capabilities: {
+                supportsCustomAgents: true,
+                supportsExecutionMode: true,
+              },
+            },
+          ],
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+        }}
+        models={[
+          {
+            id: "gpt-5",
+            displayName: "GPT-5",
+            runtimeProvider: "copilot",
+            supportedReasoningEfforts: [],
+          },
+        ]}
+        defaultModelId="gpt-5"
+        allSessions={[
+          {
+            sessionId: "latest-match",
+            agentId: "copilot-orchestrator",
+            title: "Ship a coordinated implementation",
+            startedAt: "2026-04-03T12:00:00Z",
+            updatedAt: "2026-04-03T12:10:00Z",
+            summary: "Ship a coordinated implementation",
+            projectPath: "/tmp/project/",
+            projectPurpose: "Ship a coordinated implementation ",
+            cliProvider: "copilot",
+            model: "gpt-5",
+            tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+            tmuxWindowName: "tmp-new",
+            tmuxPaneId: "%42",
+            status: "idle",
+            activeJobId: undefined,
+            lastJobId: "job-2",
+            availableCustomAgents: [],
+            selectedCustomAgentId: undefined,
+            executionMode: "fleet",
+            sessionDirectory: "/tmp/latest-match",
+            manifestPath:
+              "agents/copilot-orchestrator/history/2026-04/latest-match/SESSION.md",
+            jobs: [
+              {
+                jobId: "job-2",
+                sessionId: "latest-match",
+                providerSessionId: "copilot-session-123",
+                promptPreview: "Ship the coordinated implementation",
+                promptMode: "inline",
+                status: "completed",
+                submittedAt: "2026-04-03T12:08:00Z",
+                startedAt: "2026-04-03T12:08:10Z",
+                completedAt: "2026-04-03T12:10:00Z",
+                jobDirectory: "/tmp/latest-match/job-2",
+              },
+            ],
+            terminalTail: "",
+            logSize: 0,
+          },
+        ]}
+        projectPathSuggestions={["/tmp/project"]}
+        pending={false}
+        onCreateSession={() => undefined}
+        onUpdateSession={() => undefined}
+        onSelectSession={() => undefined}
+        onDeleteOlderDuplicate={() => undefined}
+        onDelegate={() => undefined}
+        onSendInput={() => undefined}
+        onCancelJob={() => undefined}
+        onRestartSession={() => undefined}
+        onDeleteQueuedJob={() => undefined}
+        schedules={[]}
+        onCreateSchedule={() => undefined}
+        onUpdateSchedule={() => undefined}
+        onDeleteSchedule={() => undefined}
+        onSessionUpdate={() => undefined}
+      />
+    );
+
+    await user.type(
+      screen.getByLabelText("Project purpose"),
+      "Ship a coordinated implementation"
+    );
+
+    expect(screen.getByText(/Latest coding agent session ID:/i)).toBeTruthy();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Continue with previous session ID",
+      })
+    );
+
+    expect(screen.getByDisplayValue("copilot-session-123")).toBeTruthy();
+    expect(
+      (
+        screen.getByPlaceholderText(
+          "Optional existing coding agent session ID"
+        ) as HTMLInputElement
+      ).value
+    ).toBe("copilot-session-123");
   });
 
   it("lets users update the saved session title and model", async () => {
@@ -340,8 +460,113 @@ describe("OrchestratorPane", () => {
       cliProvider: "copilot",
       model: "claude-sonnet-4.6",
       selectedCustomAgentId: null,
+      providerSessionId: null,
       executionMode: "standard",
     });
+    expect(settingsPanel?.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("shows the latest coding agent session ID on the session overview", () => {
+    class MockEventSource {
+      addEventListener = vi.fn();
+      removeEventListener = vi.fn();
+      close = vi.fn();
+      onerror: (() => void) | null = null;
+    }
+    vi.stubGlobal("EventSource", MockEventSource);
+
+    render(
+      <OrchestratorPane
+        capabilities={{
+          available: true,
+          defaultProjectPath: "/tmp/project",
+          recentProjectPaths: ["/tmp/another-project"],
+          tmuxInstalled: true,
+          copilotInstalled: true,
+          geminiInstalled: false,
+          defaultCliProvider: "copilot",
+          cliProviders: [
+            {
+              id: "copilot",
+              displayName: "GitHub Copilot CLI",
+              description: "Uses the installed copilot CLI.",
+              capabilities: {
+                supportsCustomAgents: true,
+                supportsExecutionMode: true,
+              },
+            },
+          ],
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+        }}
+        session={{
+          sessionId: "2026-03-20-repo-support",
+          agentId: "copilot-orchestrator",
+          title: "Repo support",
+          startedAt: "2026-03-20T12:00:00Z",
+          updatedAt: "2026-03-20T12:05:00Z",
+          summary: "Handle runtime support work",
+          projectPath: "/tmp/project",
+          projectPurpose: "Handle runtime support work",
+          cliProvider: "copilot",
+          model: "gpt-5",
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+          tmuxWindowName: "project-repo-support-0001",
+          tmuxPaneId: "%42",
+          status: "completed",
+          activeJobId: undefined,
+          lastJobId: "job-1",
+          availableCustomAgents: [],
+          selectedCustomAgentId: undefined,
+          executionMode: "standard",
+          sessionDirectory: "/tmp/session",
+          manifestPath:
+            "agents/copilot-orchestrator/history/2026-03/2026-03-20-repo-support/SESSION.md",
+          jobs: [
+            {
+              jobId: "job-1",
+              sessionId: "2026-03-20-repo-support",
+              providerSessionId: "copilot-session-123",
+              promptPreview: "Implement the migration",
+              promptMode: "inline",
+              status: "completed",
+              submittedAt: "2026-03-20T12:00:00Z",
+              startedAt: "2026-03-20T12:00:10Z",
+              completedAt: "2026-03-20T12:05:00Z",
+              jobDirectory: "/tmp/session/job-1",
+            },
+          ],
+          terminalTail: "",
+          logSize: 0,
+        }}
+        models={[
+          {
+            id: "gpt-5",
+            displayName: "GPT-5",
+            runtimeProvider: "copilot",
+            supportedReasoningEfforts: [],
+          },
+        ]}
+        defaultModelId="gpt-5"
+        projectPathSuggestions={["/tmp/project", "/tmp/another-project"]}
+        pending={false}
+        onCreateSession={() => undefined}
+        onUpdateSession={() => undefined}
+        onDelegate={() => undefined}
+        onSendInput={() => undefined}
+        onCancelJob={() => undefined}
+        onRestartSession={() => undefined}
+        onDeleteQueuedJob={() => undefined}
+        schedules={[]}
+        onCreateSchedule={() => undefined}
+        onUpdateSchedule={() => undefined}
+        onDeleteSchedule={() => undefined}
+        onSessionUpdate={() => undefined}
+      />
+    );
+
+    expect(
+      screen.getByText("Latest coding agent session ID: copilot-session-123")
+    ).toBeTruthy();
   });
 
   it("lets users save a discovered custom agent for future delegated jobs", async () => {
@@ -449,13 +674,14 @@ describe("OrchestratorPane", () => {
       cliProvider: "copilot",
       model: "gpt-5",
       selectedCustomAgentId: "reviewer",
+      providerSessionId: null,
       executionMode: "standard",
     });
   });
 
-  it("offers to remove older duplicate sessions from the latest saved session", async () => {
+  it("offers to remove a single older duplicate session from the latest saved session", async () => {
     const user = userEvent.setup();
-    const onDeleteOlderDuplicates = vi.fn();
+    const onDeleteOlderDuplicate = vi.fn();
     class MockEventSource {
       addEventListener = vi.fn();
       removeEventListener = vi.fn();
@@ -557,7 +783,7 @@ describe("OrchestratorPane", () => {
         onCreateSession={() => undefined}
         onUpdateSession={() => undefined}
         onSelectSession={() => undefined}
-        onDeleteOlderDuplicates={onDeleteOlderDuplicates}
+        onDeleteOlderDuplicate={onDeleteOlderDuplicate}
         onDelegate={() => undefined}
         onSendInput={() => undefined}
         onCancelJob={() => undefined}
@@ -572,10 +798,10 @@ describe("OrchestratorPane", () => {
     );
 
     await user.click(
-      screen.getByRole("button", { name: "Remove 1 older duplicate" })
+      screen.getByRole("button", { name: "Remove older duplicate" })
     );
 
-    expect(onDeleteOlderDuplicates).toHaveBeenCalledWith(["older-match"]);
+    expect(onDeleteOlderDuplicate).toHaveBeenCalledWith("older-match");
   });
 
   it("lets users switch a session to fleet mode", async () => {
@@ -676,6 +902,7 @@ describe("OrchestratorPane", () => {
       cliProvider: "copilot",
       model: "gpt-5",
       selectedCustomAgentId: null,
+      providerSessionId: null,
       executionMode: "fleet",
     });
   });
@@ -778,6 +1005,7 @@ describe("OrchestratorPane", () => {
       cliProvider: "copilot",
       model: "gpt-5",
       selectedCustomAgentId: null,
+      providerSessionId: null,
       executionMode: "auto",
     });
   });
@@ -871,7 +1099,125 @@ describe("OrchestratorPane", () => {
     expect(onDelegate).toHaveBeenCalledWith({
       prompt: "Inspect the attached image.",
       attachment: expect.any(File),
+      providerSessionId: undefined,
     });
+  });
+
+  it("lets users continue a prior task session for the next delegated prompt only", async () => {
+    const user = userEvent.setup();
+    const onDelegate = vi.fn();
+    class MockEventSource {
+      addEventListener = vi.fn();
+      removeEventListener = vi.fn();
+      close = vi.fn();
+      onerror: (() => void) | null = null;
+    }
+    vi.stubGlobal("EventSource", MockEventSource);
+
+    render(
+      <OrchestratorPane
+        capabilities={{
+          available: true,
+          defaultProjectPath: "/tmp/project",
+          recentProjectPaths: ["/tmp/another-project"],
+          tmuxInstalled: true,
+          copilotInstalled: true,
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+        }}
+        session={{
+          sessionId: "2026-03-20-repo-support",
+          agentId: "copilot-orchestrator",
+          title: "Repo support",
+          startedAt: "2026-03-20T12:00:00Z",
+          updatedAt: "2026-03-20T12:05:00Z",
+          summary: "Handle runtime support work",
+          projectPath: "/tmp/project",
+          projectPurpose: "Handle runtime support work",
+          cliProvider: "copilot",
+          model: "gpt-5",
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+          tmuxWindowName: "project-repo-support-0001",
+          tmuxPaneId: "%42",
+          status: "completed",
+          activeJobId: undefined,
+          lastJobId: "job-1",
+          availableCustomAgents: [],
+          selectedCustomAgentId: undefined,
+          executionMode: "standard",
+          sessionDirectory: "/tmp/session",
+          manifestPath:
+            "agents/copilot-orchestrator/history/2026-03/2026-03-20-repo-support/SESSION.md",
+          jobs: [
+            {
+              jobId: "job-1",
+              sessionId: "2026-03-20-repo-support",
+              providerSessionId: "copilot-session-123",
+              promptPreview: "Implement the migration",
+              promptMode: "inline",
+              status: "completed",
+              submittedAt: "2026-03-20T12:00:00Z",
+              startedAt: "2026-03-20T12:00:10Z",
+              completedAt: "2026-03-20T12:05:00Z",
+              jobDirectory: "/tmp/session/job-1",
+            },
+          ],
+          terminalTail: "",
+          logSize: 0,
+        }}
+        models={[
+          {
+            id: "gpt-5",
+            displayName: "GPT-5",
+            runtimeProvider: "copilot",
+            supportedReasoningEfforts: [],
+          },
+        ]}
+        defaultModelId="gpt-5"
+        projectPathSuggestions={["/tmp/project", "/tmp/another-project"]}
+        pending={false}
+        onCreateSession={() => undefined}
+        onUpdateSession={() => undefined}
+        onDelegate={onDelegate}
+        onSendInput={() => undefined}
+        onCancelJob={() => undefined}
+        onRestartSession={() => undefined}
+        onDeleteQueuedJob={() => undefined}
+        schedules={[]}
+        onCreateSchedule={() => undefined}
+        onUpdateSchedule={() => undefined}
+        onDeleteSchedule={() => undefined}
+        onSessionUpdate={() => undefined}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open task queue" }));
+    await user.click(
+      screen.getByRole("button", {
+        name: "Continue task: Implement the migration",
+      })
+    );
+    expect(screen.getByDisplayValue("copilot-session-123")).toBeTruthy();
+
+    await user.type(
+      screen.getByPlaceholderText(
+        "Queue another async prompt for the Copilot CLI window."
+      ),
+      "Refine the migration plan."
+    );
+    await user.click(screen.getByRole("button", { name: "Delegate prompt" }));
+
+    expect(onDelegate).toHaveBeenCalledWith({
+      prompt: "Refine the migration plan.",
+      attachment: undefined,
+      providerSessionId: "copilot-session-123",
+    });
+    expect(
+      (
+        screen.getByPlaceholderText(
+          "Leave blank to start a fresh task session"
+        ) as HTMLInputElement
+      ).value
+    ).toBe("");
   });
 
   it("creates a recurring schedule from the orchestrator session view", async () => {

@@ -89,6 +89,7 @@ export interface CreateOrchestratorSessionInput {
   model?: string;
   availableCustomAgents?: CopilotCustomAgent[];
   selectedCustomAgentId?: string;
+  providerSessionId?: string;
   executionMode?: OrchestratorExecutionMode;
   tmuxSessionName: string;
   tmuxWindowName: string;
@@ -104,6 +105,7 @@ export interface CreateOrchestratorJobInput {
   outputPath?: string;
   attachment?: AttachmentUpload;
   customAgentId?: string;
+  providerSessionId?: string;
   scheduleId?: string;
   premiumUsage?: PremiumUsage;
   submittedAt?: string;
@@ -211,6 +213,7 @@ export async function createOrchestratorSession(
       .array()
       .parse(input.availableCustomAgents ?? []),
     selectedCustomAgentId: input.selectedCustomAgentId,
+    providerSessionId: input.providerSessionId?.trim() || undefined,
     executionMode: input.executionMode ?? "standard",
     tmuxSessionName: input.tmuxSessionName,
     tmuxWindowName: input.tmuxWindowName,
@@ -294,6 +297,7 @@ export async function createOrchestratorJob(
     jobId,
     sessionId,
     scheduleId: input.scheduleId,
+    providerSessionId: input.providerSessionId?.trim() || undefined,
     prompt: input.prompt ?? "",
     promptPreview: input.promptPreview,
     promptMode: input.promptMode,
@@ -792,6 +796,7 @@ async function writeOrchestratorSessionManifest(
     `CLI Provider: ${state.cliProvider}`,
     `Model: ${state.model}`,
     `Selected Custom Agent: ${state.selectedCustomAgentId ?? "none"}`,
+    `Provider Session ID: ${state.providerSessionId ?? "none"}`,
     `Execution Mode: ${state.executionMode}`,
     `Available Custom Agents: ${state.availableCustomAgents.length}`,
     `Tmux Session: ${state.tmuxSessionName}`,

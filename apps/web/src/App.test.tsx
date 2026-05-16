@@ -24,6 +24,10 @@ vi.mock("./components/CommandPalette", () => ({
   CommandPalette: () => null,
 }));
 
+const { deleteOrchestratorSession } = vi.hoisted(() => ({
+  deleteOrchestratorSession: vi.fn(async () => ({ ok: true })),
+}));
+
 vi.mock("./api", () => {
   const workspace: WorkspaceSummary = {
     storeRoot: "/tmp/store",
@@ -90,6 +94,7 @@ vi.mock("./api", () => {
       getOrchestratorCapabilities: vi.fn(async () => capabilities),
       listOrchestratorSessions: vi.fn(async () => sessions),
       listOrchestratorSchedules: vi.fn(async () => []),
+      deleteOrchestratorSession,
     },
   };
 });
@@ -119,6 +124,35 @@ describe("App", () => {
       expect(screen.getByTestId("orchestrator-pane-mode").textContent).toBe(
         "new-session"
       )
+    );
+  });
+
+  it("removes an orchestrator session from its row action", async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("orchestrator-pane-mode").textContent).toBe(
+        "new-session"
+      )
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Remove selected" })
+    ).toBeNull();
+    await user.click(
+      screen.getByRole("button", { name: "Delete session: Existing session" })
+    );
+    await user.click(
+      screen.getByLabelText(
+        /I understand this session will be permanently removed/i
+      )
+    );
+    await user.click(screen.getByRole("button", { name: "Remove session" }));
+
+    await waitFor(() =>
+      expect(deleteOrchestratorSession).toHaveBeenCalledWith("session-1")
     );
   });
 });

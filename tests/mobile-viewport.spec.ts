@@ -1,138 +1,340 @@
-import { test, expect } from '@playwright/test';
+import type { Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-test.describe('Mobile Viewport - Text Overflow', () => {
-  test('heading should use text-overflow ellipsis on mobile', async ({ page }) => {
-    // Set mobile viewport (Pixel 5 is 393px wide)
-    await page.setViewportSize({ width: 393, height: 851 });
-    
-    // Navigate to the app
-    await page.goto('/');
-    
-    // Wait for the app to load
-    await page.waitForLoadState('networkidle');
-    
-    // Check that heading uses text-overflow ellipsis
-    const heading = page.locator('.orchestrator-brand h1');
-    const textOverflow = await heading.evaluate((el) =>
-      window.getComputedStyle(el).textOverflow
-    );
-    
-    expect(textOverflow).toBe('ellipsis');
+const SELECTED_SESSION_KEY = "coding-agent-orchestrator:selected-session";
+
+const workspace = {
+  storeRoot: "/tmp/orchestrator-store",
+  copilotConfigDir: "/tmp/copilot",
+  storeSkillDirectory: "/tmp/store-skills",
+  copilotSkillDirectory: "/tmp/copilot-skills",
+  agentCount: 1,
+};
+
+const capabilities = {
+  available: true,
+  defaultProjectPath: "/tmp/project",
+  recentProjectPaths: ["/tmp/project", "/tmp/project-two"],
+  tmuxInstalled: true,
+  copilotInstalled: true,
+  geminiInstalled: false,
+  codexInstalled: true,
+  opencodeInstalled: true,
+  defaultCliProvider: "copilot",
+  cliProviders: [
+    {
+      id: "copilot",
+      displayName: "GitHub Copilot CLI",
+      description: "Uses the installed copilot CLI.",
+      capabilities: {
+        supportsCustomAgents: true,
+        supportsExecutionMode: true,
+      },
+    },
+  ],
+  tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+};
+
+const schedules = [
+  {
+    scheduleId: "schedule-1",
+    sessionId: "session-1",
+    title: "Daily sync",
+    prompt: "Summarize the latest repo activity.",
+    frequency: "daily",
+    timeOfDay: "09:00",
+    timezone: "Australia/Sydney",
+    enabled: true,
+    totalRuns: 3,
+    failedRuns: 0,
+    nextRunAt: "2026-05-14T09:00:00.000Z",
+    createdAt: "2026-05-10T00:00:00.000Z",
+    updatedAt: "2026-05-10T00:00:00.000Z",
+    lastJobStatus: "completed",
+    emailTo: null,
+    customAgentId: null,
+    dayOfWeek: null,
+    dayOfMonth: null,
+  },
+];
+
+function createSession(overrides: Record<string, unknown> = {}) {
+  return {
+    sessionId: "session-1",
+    agentId: "copilot-orchestrator",
+    title: "Coordinated mobile fix",
+    startedAt: "2026-05-12T22:00:00.000Z",
+    updatedAt: "2026-05-13T08:00:00.000Z",
+    summary: "Fix the mobile layout regressions.",
+    projectPath: "/tmp/project/mobile",
+    projectPurpose: "Keep the orchestrator usable on small screens.",
+    cliProvider: "copilot",
+    model: "gpt-5-mini",
+    tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+    tmuxWindowName: "mobile-fix",
+    tmuxPaneId: "%42",
+    status: "running",
+    activeJobId: "job-1",
+    lastJobId: "job-2",
+    availableCustomAgents: [
+      {
+        id: "agent-mobile",
+        name: "Mobile QA",
+      },
+    ],
+    selectedCustomAgentId: "agent-mobile",
+    executionMode: "fleet",
+    sessionDirectory: "/tmp/session-1",
+    manifestPath: "/tmp/session-1/SESSION.md",
+    systemNotice: "Reconnected to the tmux stream.",
+    logSize: 1200,
+    terminalTail: "waiting for output\n",
+    jobs: [
+      {
+        jobId: "job-1",
+        promptPreview: "Fix the overflowing mobile layout",
+        prompt: "Fix the overflowing mobile layout",
+        promptMode: "inline",
+        status: "running",
+        submittedAt: "2026-05-13T07:58:00.000Z",
+        startedAt: "2026-05-13T08:01:00.000Z",
+      },
+      {
+        jobId: "job-2",
+        promptPreview: "Verify desktop layout",
+        prompt: "Verify desktop layout",
+        promptMode: "inline",
+        status: "queued",
+        submittedAt: "2026-05-13T08:02:00.000Z",
+      },
+    ],
+    ...overrides,
+  };
+}
+
+const baseSessions = [
+  createSession(),
+  createSession({
+    sessionId: "session-2",
+    title: "Gemma Agent PWA",
+    status: "running",
+    updatedAt: "2026-05-13T08:31:27.000Z",
+    activeJobId: undefined,
+    lastJobId: undefined,
+    jobs: [],
+  }),
+  createSession({
+    sessionId: "session-3",
+    title: "Agents DB",
+    status: "missing",
+    updatedAt: "2026-05-12T12:24:10.000Z",
+    activeJobId: undefined,
+    lastJobId: undefined,
+    jobs: [],
+  }),
+  createSession({
+    sessionId: "session-4",
+    title: "My Agents",
+    status: "missing",
+    updatedAt: "2026-05-12T12:24:10.000Z",
+    activeJobId: undefined,
+    lastJobId: undefined,
+    jobs: [],
+  }),
+  createSession({
+    sessionId: "session-5",
+    title: "Orchestrator",
+    status: "missing",
+    updatedAt: "2026-05-12T12:22:03.000Z",
+    activeJobId: undefined,
+    lastJobId: undefined,
+    jobs: [],
+  }),
+];
+
+async function mockOrchestratorRoutes(page: Page) {
+  await page.route("**/api/workspace", async (route) => {
+    await route.fulfill({ json: workspace });
   });
-
-  test('should truncate long headings with ellipsis on mobile', async ({ page }) => {
-    await page.setViewportSize({ width: 393, height: 851 });
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    
-    // Find the h1 element
-    const heading = page.locator('.orchestrator-brand h1');
-    
-    // Check that heading exists
-    await expect(heading).toBeVisible();
-    
-    // Get computed style to verify text-overflow is ellipsis
-    const textOverflow = await heading.evaluate((el) => 
-      window.getComputedStyle(el).textOverflow
-    );
-    
-    expect(textOverflow).toBe('ellipsis');
-    
-    // Verify white-space is nowrap
-    const whiteSpace = await heading.evaluate((el) =>
-      window.getComputedStyle(el).whiteSpace
-    );
-    
-    expect(whiteSpace).toBe('nowrap');
+  await page.route("**/api/orchestrator/capabilities", async (route) => {
+    await route.fulfill({ json: capabilities });
   });
-
-  test('should handle overflow-wrap on mobile', async ({ page }) => {
-    await page.setViewportSize({ width: 393, height: 851 });
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    
-    // Check sidebar meta text handling
-    const sidebarMeta = page.locator('.orchestrator-sidebar-meta');
-    
-    if (await sidebarMeta.isVisible()) {
-      const overflowWrap = await sidebarMeta.evaluate((el) =>
-        window.getComputedStyle(el).overflowWrap
-      );
-      
-      expect(overflowWrap).toBe('anywhere');
+  await page.route("**/api/orchestrator/schedules", async (route) => {
+    await route.fulfill({ json: schedules });
+  });
+  await page.route("**/api/orchestrator/sessions", async (route) => {
+    await route.fulfill({ json: baseSessions });
+  });
+  await page.route(
+    /\/api\/orchestrator\/sessions\/[^/]+\/changes$/,
+    async (route) => {
+      await route.fulfill({
+        json: {
+          state: "dirty",
+          message: "2 changed files",
+          files: [
+            {
+              path: "apps/web/src/styles.css",
+              status: "modified",
+              addedLines: 8,
+              removedLines: 2,
+            },
+            {
+              path: "tests/mobile-viewport.spec.ts",
+              status: "modified",
+              addedLines: 24,
+              removedLines: 10,
+            },
+          ],
+        },
+      });
     }
-  });
-
-  test('should not clip content in sidebar on mobile', async ({ page }) => {
-    await page.setViewportSize({ width: 393, height: 851 });
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    
-    // Check sidebar overflow properties
-    const sidebar = page.locator('.orchestrator-sidebar');
-    
-    const overflowX = await sidebar.evaluate((el) =>
-      window.getComputedStyle(el).overflowX
-    );
-    
-    expect(overflowX).toBe('clip');
-  });
-
-  test('should display session list horizontally on mobile', async ({ page }) => {
-    await page.setViewportSize({ width: 393, height: 851 });
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    
-    const sessionList = page.locator('.orchestrator-session-list');
-    
-    if (await sessionList.isVisible()) {
-      const gridAutoFlow = await sessionList.evaluate((el) =>
-        window.getComputedStyle(el).gridAutoFlow
-      );
-      
-      expect(gridAutoFlow).toBe('column');
+  );
+  await page.route(
+    /\/api\/orchestrator\/sessions\/[^/]+\/terminal\?before=\d+$/,
+    async (route) => {
+      await route.fulfill({
+        json: {
+          chunk: "older output\n",
+          startOffset: 0,
+          endOffset: 100,
+        },
+      });
     }
+  );
+}
+
+async function gotoWithMocks(page: Page) {
+  await mockOrchestratorRoutes(page);
+  await page.goto("/");
+  await expect(page.locator(".orchestrator-brand h1")).toHaveText(
+    "Coding Agent CLI Orchestrator"
+  );
+  await expect(page.locator(".orchestrator-sidebar")).toBeVisible();
+}
+
+async function measureViewportFit(page: Page) {
+  return page.evaluate(() => {
+    const appShell = document.querySelector(".orchestrator-app-shell");
+    const sidebar = document.querySelector(".orchestrator-sidebar");
+    const sessionList = document.querySelector(".orchestrator-session-list");
+    const main = document.querySelector(".orchestrator-main");
+    const heading = document.querySelector(".orchestrator-brand h1");
+    const sidebarStyle = sidebar ? window.getComputedStyle(sidebar) : null;
+    const sessionListStyle = sessionList
+      ? window.getComputedStyle(sessionList)
+      : null;
+
+    return {
+      viewportWidth: window.innerWidth,
+      bodyScrollWidth: document.body.scrollWidth,
+      appShellScrollWidth: appShell?.scrollWidth ?? 0,
+      sidebarWidth: sidebar?.getBoundingClientRect().width ?? 0,
+      mainWidth: main?.getBoundingClientRect().width ?? 0,
+      sessionListClientWidth: sessionList?.clientWidth ?? 0,
+      sessionListScrollWidth: sessionList?.scrollWidth ?? 0,
+      sessionListFlow: sessionListStyle?.gridAutoFlow ?? "",
+      sidebarOverflowX: sidebarStyle?.overflowX ?? "",
+      headingTextOverflow: heading
+        ? window.getComputedStyle(heading).textOverflow
+        : "",
+      headingWhiteSpace: heading
+        ? window.getComputedStyle(heading).whiteSpace
+        : "",
+    };
+  });
+}
+
+test.describe("mobile viewport", () => {
+  test("keeps the new-session screen within the mobile viewport", async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile-chrome");
+
+    await gotoWithMocks(page);
+
+    const measurements = await measureViewportFit(page);
+    expect(measurements.viewportWidth).toBe(393);
+    expect(measurements.bodyScrollWidth).toBe(measurements.viewportWidth);
+    expect(measurements.appShellScrollWidth).toBe(measurements.viewportWidth);
+    expect(Math.round(measurements.sidebarWidth)).toBe(
+      measurements.viewportWidth
+    );
+    expect(Math.round(measurements.mainWidth)).toBe(measurements.viewportWidth);
+    expect(measurements.sessionListFlow).toBe("column");
+    expect(measurements.sessionListScrollWidth).toBeGreaterThan(
+      measurements.sessionListClientWidth
+    );
+    expect(measurements.sidebarOverflowX).toBe("clip");
+    expect(measurements.headingTextOverflow).toBe("ellipsis");
+    expect(measurements.headingWhiteSpace).toBe("nowrap");
+
+    await expect(
+      page.getByRole("button", { name: "Create session" })
+    ).toBeVisible();
+    await expect(page.getByLabel("Project purpose")).toBeVisible();
   });
 
-  test('should have proper min-width constraints', async ({ page }) => {
-    await page.setViewportSize({ width: 393, height: 851 });
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    
-    const brand = page.locator('.orchestrator-brand');
-    const firstDiv = brand.locator('> div:first-child');
-    
-    // The first div inside brand should have min-width: 0 to allow shrinking
-    const minWidth = await firstDiv.evaluate((el) =>
-      window.getComputedStyle(el).minWidth
-    );
-    
-    expect(minWidth).toBe('0px');
+  test("keeps the existing-session controls usable on mobile", async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile-chrome");
+
+    await page.addInitScript((key) => {
+      window.localStorage.setItem(key, "session-1");
+    }, SELECTED_SESSION_KEY);
+    await gotoWithMocks(page);
+
+    await expect(
+      page.locator(".orchestrator-session-heading strong")
+    ).toHaveText("Coordinated mobile fix");
+    await page.getByRole("button", { name: "Session settings" }).click();
+    await expect(page.getByLabel("Project name")).toBeVisible();
+
+    await page.getByRole("button", { name: "Open task queue" }).click();
+    await expect(
+      page.getByText("Current run plus any queued follow-up work")
+    ).toBeVisible();
+
+    const measurements = await measureViewportFit(page);
+    expect(measurements.bodyScrollWidth).toBe(measurements.viewportWidth);
+    expect(measurements.appShellScrollWidth).toBe(measurements.viewportWidth);
+    await expect(
+      page.getByRole("button", { name: "Create schedule" })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Cancel job" })
+    ).toBeVisible();
   });
 });
 
-test.describe('Desktop Viewport', () => {
-  test('should display normally on desktop', async ({ page }) => {
-    // Chrome desktop is ~1280px wide
-    await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    
-    const heading = page.locator('.orchestrator-brand h1');
-    
-    // Heading should exist
-    const count = await heading.count();
-    expect(count).toBeGreaterThan(0);
-    
-    // On desktop, heading should be larger
-    if (count > 0) {
-      const fontSize = await heading.first().evaluate((el) =>
-        window.getComputedStyle(el).fontSize
-      );
-      
-      // Should be around 1.1rem = 17.6px (or similar)
-      const fontSizeNum = parseFloat(fontSize);
-      expect(fontSizeNum).toBeGreaterThan(15);
-    }
+test.describe("desktop viewport", () => {
+  test("preserves the desktop split layout", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "chromium");
+
+    await gotoWithMocks(page);
+
+    const layout = await page.evaluate(() => {
+      const shell = document.querySelector(".orchestrator-app-shell");
+      const sidebar = document.querySelector(".orchestrator-sidebar");
+      const sessionList = document.querySelector(".orchestrator-session-list");
+
+      return {
+        viewportWidth: window.innerWidth,
+        bodyScrollWidth: document.body.scrollWidth,
+        columns: shell
+          ? window.getComputedStyle(shell).gridTemplateColumns
+          : "",
+        sidebarWidth: sidebar?.getBoundingClientRect().width ?? 0,
+        sessionListFlow: sessionList
+          ? window.getComputedStyle(sessionList).gridAutoFlow
+          : "",
+      };
+    });
+
+    expect(layout.bodyScrollWidth).toBe(layout.viewportWidth);
+    expect(layout.columns.split(" ").length).toBe(2);
+    expect(layout.sidebarWidth).toBeGreaterThan(250);
+    expect(layout.sessionListFlow).not.toBe("column");
   });
 });

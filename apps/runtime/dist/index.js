@@ -145,6 +145,11 @@ var COPILOT_RATE_LIMIT_RESET_EPOCH_PATTERN = /x-ratelimit-reset[^0-9]{0,20}(\d{1
 var COPILOT_RATE_LIMIT_RESET_ISO_PATTERN = /(?:available again at|try again at|reset(?:s| time)? at|retry at)[^\d]{0,20}(\d{4}-\d{2}-\d{2}t\d{2}:\d{2}(?::\d{2})?z)/gi;
 var COPILOT_RATE_LIMIT_RELATIVE_WINDOW_PATTERN = /(?:wait|retry|available again|try again|reset(?:s)?)[^\n]{0,120}?\b(?:in|after)\s+([^\n]+)/gi;
 var COPILOT_RATE_LIMIT_DURATION_PART_PATTERN = /(\d+)\s*(days?|d|hours?|hrs?|hr|h|minutes?|mins?|min|m|seconds?|secs?|sec|s)\b/gi;
+var COPILOT_SESSION_ID_PATTERNS = [
+  /(?:started|resuming)\s+(?:github\s+)?copilot(?:\s+cli)?\s+session\s*:\s*([^\r\n]+)/gi,
+  /(?:^|\b)session(?:\s+started)?\.?\s*(?:session\s+)?id\s*:\s*([^\r\n]+)/gim,
+  /\/sessions\/([A-Za-z0-9][A-Za-z0-9._:-]*)\b/gi
+];
 var COPILOT_CLI_PROVIDER = {
   id: "copilot",
   displayName: "GitHub Copilot CLI",
@@ -187,6 +192,55 @@ var ORCHESTRATOR_CLI_PROVIDERS = [
   CODEX_CLI_PROVIDER,
   OPENCODE_CLI_PROVIDER
 ];
+function normalizeProviderSessionId(value) {
+  const normalized = value?.trim();
+  return normalized ? normalized : void 0;
+}
+function supportsProviderSessionResume(cliProvider) {
+  return cliProvider === COPILOT_CLI_PROVIDER.id || cliProvider === GEMINI_CLI_PROVIDER.id || cliProvider === CODEX_CLI_PROVIDER.id || cliProvider === OPENCODE_CLI_PROVIDER.id;
+}
+function supportsProviderSessionBootstrap(cliProvider) {
+  return cliProvider === COPILOT_CLI_PROVIDER.id;
+}
+function defaultJobProviderSessionId(cliProvider, jobId) {
+  return supportsProviderSessionBootstrap(cliProvider) ? `job-${jobId}` : void 0;
+}
+function resolveUpdatedProviderSessionId(input) {
+  if (input.requestedProviderSessionId !== void 0) {
+    return normalizeProviderSessionId(input.requestedProviderSessionId);
+  }
+  if (input.cliProvider === input.currentCliProvider) {
+    return input.currentProviderSessionId;
+  }
+  return void 0;
+}
+function resolveQueuedJobProviderSession(input) {
+  const requestedProviderSessionId = normalizeProviderSessionId(
+    input.requestedProviderSessionId
+  );
+  if (requestedProviderSessionId) {
+    return {
+      providerSessionId: requestedProviderSessionId,
+      resumeProviderSession: true
+    };
+  }
+  const sessionProviderSessionId = normalizeProviderSessionId(
+    input.sessionProviderSessionId
+  );
+  if (sessionProviderSessionId) {
+    return {
+      providerSessionId: sessionProviderSessionId,
+      resumeProviderSession: true
+    };
+  }
+  return {
+    providerSessionId: defaultJobProviderSessionId(
+      input.cliProvider,
+      input.jobId
+    ),
+    resumeProviderSession: false
+  };
+}
 var TmuxOrchestratorService = class {
   constructor(workspace2, defaultProjectPath2, tmuxSessionName = DEFAULT_TMUX_SESSION_NAME, resolveModelDescriptor) {
     this.workspace = workspace2;
@@ -316,6 +370,9 @@ var TmuxOrchestratorService = class {
     const title = request.title?.trim() || request.projectPurpose.trim() || path.basename(projectPath) || "Orchestrator session";
     const startedAt = (/* @__PURE__ */ new Date()).toISOString();
     const sessionId = `${startedAt.slice(0, 10)}-${slugify(title)}`;
+    const providerSessionId = normalizeProviderSessionId(
+      request.providerSessionId
+    );
     const tmuxWindowName = buildOrchestratorWindowName(
       title,
       projectPath,
@@ -338,6 +395,7 @@ var TmuxOrchestratorService = class {
       model,
       availableCustomAgents,
       selectedCustomAgentId,
+      providerSessionId,
       executionMode,
       tmuxSessionName: this.tmuxSessionName,
       tmuxWindowName,
@@ -360,13 +418,19 @@ var TmuxOrchestratorService = class {
       session,
       request.selectedCustomAgentId
     ) : void 0;
+    const providerSessionId = resolveUpdatedProviderSessionId({
+      cliProvider,
+      currentCliProvider: session.cliProvider,
+      currentProviderSessionId: session.providerSessionId,
+      requestedProviderSessionId: request.providerSessionId
+    });
     const executionMode = cliProvider === COPILOT_CLI_PROVIDER.id ? request.executionMode ?? session.executionMode ?? "standard" : "standard";
     const tmuxWindowName = buildOrchestratorWindowName(
       title,
       session.projectPath,
       session.sessionId
     );
-    const hasChanges = title !== session.title || cliProvider !== (session.cliProvider ?? DEFAULT_ORCHESTRATOR_CLI_PROVIDER) || model !== session.model || selectedCustomAgentId !== session.selectedCustomAgentId || executionMode !== (session.executionMode ?? "standard") || tmuxWindowName !== session.tmuxWindowName;
+    const hasChanges = title !== session.title || cliProvider !== (session.cliProvider ?? DEFAULT_ORCHESTRATOR_CLI_PROVIDER) || model !== session.model || selectedCustomAgentId !== session.selectedCustomAgentId || providerSessionId !== session.providerSessionId || executionMode !== (session.executionMode ?? "standard") || tmuxWindowName !== session.tmuxWindowName;
     if (!hasChanges) {
       return session;
     }
@@ -383,6 +447,7 @@ var TmuxOrchestratorService = class {
       model,
       availableCustomAgents,
       selectedCustomAgentId,
+      providerSessionId,
       executionMode,
       tmuxWindowName
     });
@@ -464,6 +529,7 @@ var TmuxOrchestratorService = class {
     );
     const delegatedPrompt = typeof request === "string" ? request : request.prompt;
     const attachment = typeof request === "string" ? void 0 : request.attachment;
+    const providerSessionId = typeof request === "string" ? void 0 : request.providerSessionId;
     if (!delegatedPrompt.trim() && !attachment) {
       throw new Error(
         "Provide a prompt or attach a file before delegating work."
@@ -478,7 +544,8 @@ var TmuxOrchestratorService = class {
       delegatedPrompt,
       {
         attachment,
-        customAgentId
+        customAgentId,
+        providerSessionId
       }
     );
     return this.loadSession(sessionId, systemNotice);
@@ -510,7 +577,8 @@ var TmuxOrchestratorService = class {
     );
     const { systemNotice } = await this.queueDelegation(session, prompt, {
       attachment,
-      customAgentId
+      customAgentId,
+      providerSessionId: job.providerSessionId
     });
     return this.loadSession(sessionId, systemNotice);
   }
@@ -724,20 +792,21 @@ var TmuxOrchestratorService = class {
     }
   }
   async reconcileSession(session) {
+    const syncedSession = await this.syncDiscoveredProviderSessionIds(session);
     const paneExists = await this.tmuxPaneExists(session.tmuxPaneId);
     if (paneExists) {
-      const queuedJob = getNextQueuedJob(session.jobs);
-      if (!session.jobs.some((job) => job.status === "running") && queuedJob) {
-        await this.startPreparedJob(session, queuedJob);
+      const queuedJob = getNextQueuedJob(syncedSession.jobs);
+      if (!syncedSession.jobs.some((job) => job.status === "running") && queuedJob) {
+        await this.startPreparedJob(syncedSession, queuedJob);
         return getOrchestratorSession(this.workspace, session.sessionId);
       }
     }
-    const next = deriveSessionStatus(session, paneExists);
-    const statusChanged = next.status !== session.status || next.activeJobId !== session.activeJobId || next.lastJobId !== session.lastJobId;
+    const next = deriveSessionStatus(syncedSession, paneExists);
+    const statusChanged = next.status !== syncedSession.status || next.activeJobId !== syncedSession.activeJobId || next.lastJobId !== syncedSession.lastJobId;
     if (statusChanged) {
       await updateOrchestratorSession(this.workspace, session.sessionId, next);
     }
-    return statusChanged ? getOrchestratorSession(this.workspace, session.sessionId) : session;
+    return statusChanged ? getOrchestratorSession(this.workspace, session.sessionId) : syncedSession;
   }
   async tmuxPaneExists(paneId) {
     try {
@@ -997,17 +1066,41 @@ var TmuxOrchestratorService = class {
   }
   async queueDelegation(session, delegatedPrompt, options = {}) {
     const attachment = options.attachment;
+    const cliProvider = session.cliProvider ?? DEFAULT_ORCHESTRATOR_CLI_PROVIDER;
     const promptMode = attachment || shouldMaterializePrompt(delegatedPrompt) ? "file" : "inline";
     const premiumUsage = await this.estimatePremiumUsage(session.model);
     const job = await createOrchestratorJob(this.workspace, session.sessionId, {
       prompt: delegatedPrompt,
       promptPreview: delegatedPrompt.trim().slice(0, 160) || attachment?.name || "Delegated prompt",
+      providerSessionId: supportsProviderSessionResume(cliProvider) ? normalizeProviderSessionId(
+        options.providerSessionId ?? session.providerSessionId
+      ) : void 0,
       promptMode,
       attachment,
       customAgentId: options.customAgentId,
       scheduleId: options.scheduleId,
       premiumUsage
     });
+    const { providerSessionId, resumeProviderSession } = resolveQueuedJobProviderSession({
+      cliProvider,
+      jobId: job.jobId,
+      sessionProviderSessionId: session.providerSessionId,
+      requestedProviderSessionId: options.providerSessionId
+    });
+    const effectiveJob = providerSessionId === job.providerSessionId ? job : {
+      ...job,
+      providerSessionId
+    };
+    if (providerSessionId !== job.providerSessionId) {
+      await updateOrchestratorJob(
+        this.workspace,
+        session.sessionId,
+        job.jobId,
+        {
+          providerSessionId
+        }
+      );
+    }
     if (options.customAgentId !== session.selectedCustomAgentId) {
       await updateOrchestratorSession(this.workspace, session.sessionId, {
         selectedCustomAgentId: options.customAgentId
@@ -1019,8 +1112,9 @@ var TmuxOrchestratorService = class {
     });
     const preparedJob = await this.prepareJobArtifacts(
       executionSession,
-      job,
-      delegatedPrompt
+      effectiveJob,
+      delegatedPrompt,
+      resumeProviderSession
     );
     if (executionSession.status === "running" && executionSession.activeJobId) {
       await updateOrchestratorSession(this.workspace, session.sessionId, {
@@ -1032,7 +1126,7 @@ var TmuxOrchestratorService = class {
     await this.startPreparedJob(executionSession, preparedJob);
     return { job: preparedJob, systemNotice };
   }
-  async prepareJobArtifacts(session, job, prompt) {
+  async prepareJobArtifacts(session, job, prompt, resumeProviderSession) {
     const effectivePrompt = buildPromptWithAttachmentContext(
       this.workspace.storeRoot,
       prompt,
@@ -1075,6 +1169,8 @@ var TmuxOrchestratorService = class {
       promptMode: job.promptMode,
       projectPurpose: session.projectPurpose,
       customAgentId: job.customAgentId,
+      providerSessionId: job.providerSessionId,
+      resumeProviderSession,
       executionMode: session.executionMode,
       tmuxTarget: session.tmuxPaneId
     });
@@ -1230,6 +1326,72 @@ var TmuxOrchestratorService = class {
       "Enter"
     ]);
   }
+  async syncDiscoveredProviderSessionIds(session) {
+    if ((session.cliProvider ?? DEFAULT_ORCHESTRATOR_CLI_PROVIDER) !== "copilot") {
+      return session;
+    }
+    let jobsChanged = false;
+    const discoveredProviderSessions = [];
+    const jobs = await Promise.all(
+      session.jobs.map(async (job) => {
+        const discoveredProviderSessionId = await this.readDiscoveredProviderSessionId(job);
+        if (discoveredProviderSessionId) {
+          discoveredProviderSessions.push({
+            providerSessionId: discoveredProviderSessionId,
+            timestamp: getJobActivityTimestamp(job)
+          });
+        }
+        if (!discoveredProviderSessionId || discoveredProviderSessionId === job.providerSessionId) {
+          return job;
+        }
+        jobsChanged = true;
+        await updateOrchestratorJob(
+          this.workspace,
+          session.sessionId,
+          job.jobId,
+          {
+            providerSessionId: discoveredProviderSessionId
+          }
+        );
+        return {
+          ...job,
+          providerSessionId: discoveredProviderSessionId
+        };
+      })
+    );
+    const latestProviderSessionId = discoveredProviderSessions.sort(
+      (left, right) => right.timestamp.localeCompare(left.timestamp)
+    )[0]?.providerSessionId;
+    const shouldUpdateSession = latestProviderSessionId && latestProviderSessionId !== session.providerSessionId;
+    if (!jobsChanged && !shouldUpdateSession) {
+      return session;
+    }
+    if (shouldUpdateSession) {
+      await updateOrchestratorSession(this.workspace, session.sessionId, {
+        providerSessionId: latestProviderSessionId
+      });
+    }
+    return {
+      ...session,
+      jobs,
+      providerSessionId: latestProviderSessionId ?? session.providerSessionId
+    };
+  }
+  async readDiscoveredProviderSessionId(job) {
+    if (!job.outputPath) {
+      return void 0;
+    }
+    const output = await fs.readFile(job.outputPath, "utf8").catch((error) => {
+      if (error.code === "ENOENT") {
+        return void 0;
+      }
+      throw error;
+    });
+    if (!output) {
+      return void 0;
+    }
+    return extractCopilotProviderSessionId(output);
+  }
 };
 function deriveSessionStatus(session, paneExists) {
   if (!paneExists) {
@@ -1274,6 +1436,9 @@ function getNextQueuedJob(jobs) {
     (left, right) => left.submittedAt.localeCompare(right.submittedAt)
   )[0];
 }
+function getJobActivityTimestamp(job) {
+  return job.completedAt ?? job.startedAt ?? job.submittedAt;
+}
 function shouldMaterializePrompt(prompt) {
   const lineCount = prompt.split("\n").length;
   return prompt.length > DIRECT_PROMPT_LIMIT || lineCount > DIRECT_PROMPT_LINE_LIMIT;
@@ -1284,17 +1449,21 @@ function buildDelegationShellScript(input) {
     model: input.model,
     prompt: input.prompt,
     promptMode: input.promptMode,
-    promptPath: input.promptPath
+    promptPath: input.promptPath,
+    providerSessionId: input.providerSessionId
   }) : cliProvider === CODEX_CLI_PROVIDER.id ? buildCodexCommand({
     model: input.model,
     prompt: input.prompt,
     promptMode: input.promptMode,
-    promptPath: input.promptPath
+    promptPath: input.promptPath,
+    projectPurpose: input.projectPurpose,
+    providerSessionId: input.providerSessionId
   }) : cliProvider === OPENCODE_CLI_PROVIDER.id ? buildOpencodeCommand({
     model: input.model,
     prompt: input.prompt,
     promptMode: input.promptMode,
-    promptPath: input.promptPath
+    promptPath: input.promptPath,
+    providerSessionId: input.providerSessionId
   }) : buildCopilotCommand({
     model: input.model,
     prompt: input.prompt,
@@ -1302,6 +1471,8 @@ function buildDelegationShellScript(input) {
     promptPath: input.promptPath,
     projectPurpose: input.projectPurpose,
     customAgentId: input.customAgentId,
+    providerSessionId: input.providerSessionId,
+    resumeProviderSession: input.resumeProviderSession ?? false,
     executionMode: input.executionMode ?? "standard"
   });
   return [
@@ -1391,9 +1562,22 @@ function buildDelegationShellScript(input) {
     ""
   ].join("\n");
 }
+function extractCopilotProviderSessionId(output) {
+  for (const pattern of COPILOT_SESSION_ID_PATTERNS) {
+    const matches = [...output.matchAll(pattern)];
+    for (const match of matches.reverse()) {
+      const candidate = normalizeDiscoveredProviderSessionId(match[1]);
+      if (candidate) {
+        return candidate;
+      }
+    }
+  }
+  return void 0;
+}
 function buildCopilotCommand(input) {
   const agentFlag = input.customAgentId ? ` --agent ${shellQuote(input.customAgentId)}` : "";
   const autopilotFlag = input.executionMode === "auto" ? " --mode autopilot" : "";
+  const providerSessionFlag = input.providerSessionId ? input.resumeProviderSession ? ` --resume ${shellQuote(input.providerSessionId)}` : ` --name ${shellQuote(input.providerSessionId)}` : "";
   const promptFlag = "-p";
   const normalizePrompt = (value) => {
     if (input.executionMode === "fleet") {
@@ -1410,28 +1594,42 @@ function buildCopilotCommand(input) {
       `Task file: ${input.promptPath}`,
       `Project purpose: ${input.projectPurpose}`
     ].join("\n");
-    return `copilot --model ${shellQuote(input.model)}${agentFlag}${autopilotFlag} --yolo ${promptFlag} ${shellQuote(
+    return `copilot --model ${shellQuote(input.model)}${agentFlag}${autopilotFlag}${providerSessionFlag} --yolo ${promptFlag} ${shellQuote(
       normalizePrompt(delegatedPrompt)
     )}`;
   }
-  return `copilot --model ${shellQuote(input.model)}${agentFlag}${autopilotFlag} --yolo ${promptFlag} ${shellQuote(
+  return `copilot --model ${shellQuote(input.model)}${agentFlag}${autopilotFlag}${providerSessionFlag} --yolo ${promptFlag} ${shellQuote(
     normalizePrompt(input.prompt)
   )}`;
 }
 function buildGeminiCommand(input) {
+  const providerSessionFlag = input.providerSessionId ? ` --resume ${shellQuote(input.providerSessionId)}` : "";
   if (input.promptMode === "file") {
     if (!input.promptPath) {
       throw new Error("Prompt file mode requires a promptPath.");
     }
-    return `gemini --model ${shellQuote(input.model)} --yolo < ${shellQuote(
+    return `gemini --model ${shellQuote(input.model)}${providerSessionFlag} --yolo < ${shellQuote(
       input.promptPath
     )}`;
   }
-  return `gemini --model ${shellQuote(input.model)} --yolo --prompt ${shellQuote(
+  return `gemini --model ${shellQuote(input.model)}${providerSessionFlag} --yolo --prompt ${shellQuote(
     input.prompt
   )}`;
 }
 function buildCodexCommand(input) {
+  if (input.providerSessionId) {
+    if (input.promptMode === "file" && !input.promptPath) {
+      throw new Error("Prompt file mode requires a promptPath.");
+    }
+    const prompt = input.promptMode === "file" ? [
+      "Read the full task instructions from the referenced file and carry them out in the current working directory.",
+      `Task file: ${input.promptPath}`,
+      `Project purpose: ${input.projectPurpose}`
+    ].join("\n") : input.prompt;
+    return `codex resume --model ${shellQuote(input.model)} --approval-mode full-auto ${shellQuote(
+      input.providerSessionId
+    )} ${shellQuote(prompt)}`;
+  }
   if (input.promptMode === "file") {
     if (!input.promptPath) {
       throw new Error("Prompt file mode requires a promptPath.");
@@ -1445,15 +1643,16 @@ function buildCodexCommand(input) {
   )}`;
 }
 function buildOpencodeCommand(input) {
+  const providerSessionFlag = input.providerSessionId ? ` --session ${shellQuote(input.providerSessionId)}` : "";
   if (input.promptMode === "file") {
     if (!input.promptPath) {
       throw new Error("Prompt file mode requires a promptPath.");
     }
-    return `opencode run --model ${shellQuote(input.model)} < ${shellQuote(
+    return `opencode run --model ${shellQuote(input.model)}${providerSessionFlag} < ${shellQuote(
       input.promptPath
     )}`;
   }
-  return `opencode run --model ${shellQuote(input.model)} -p ${shellQuote(
+  return `opencode run --model ${shellQuote(input.model)}${providerSessionFlag} -p ${shellQuote(
     input.prompt
   )}`;
 }
@@ -1474,6 +1673,16 @@ function buildPromptWithAttachmentContext(storeRoot, prompt, attachment) {
     "Task:",
     trimmedPrompt || "Inspect the attached file and complete the most relevant next step in the current project."
   ].join("\n");
+}
+function normalizeDiscoveredProviderSessionId(value) {
+  if (!value) {
+    return void 0;
+  }
+  const normalized = value.trim().replace(/\s+\(named:.*$/i, "").replace(/[),.;:]+$/, "").replace(/^["']|["']$/g, "").trim();
+  if (!normalized || normalized.toLowerCase() === "none") {
+    return void 0;
+  }
+  return normalized;
 }
 function buildCopilotRateLimitParserNodeScript() {
   return [
