@@ -72,7 +72,9 @@ interface OrchestratorPaneProps {
     request: OrchestratorScheduleUpdateRequest
   ) => void;
   onDeleteSchedule: (scheduleId: string, sessionId: string) => void;
+  onDeleteSession?: () => void;
   onSessionUpdate: (session: OrchestratorSession) => void;
+  onSessionMissing?: (sessionId: string) => void;
   terminalOutputHeight?: number;
   onTerminalOutputHeightChange?: (height: number) => void;
 }
@@ -174,6 +176,13 @@ function normalizeProviderSessionId(
 ): string | undefined {
   const normalized = providerSessionId?.trim();
   return normalized ? normalized : undefined;
+}
+
+function isMissingOrchestratorSessionError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.toLowerCase().includes("orchestrator session not found:")
+  );
 }
 
 function getJobProviderSessionTimestamp(job: OrchestratorJob): string {
@@ -610,13 +619,14 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
       return;
     }
 
+    const sessionId = props.session.sessionId;
     const requestId = workingTreeRequestRef.current + 1;
     workingTreeRequestRef.current = requestId;
     setWorkingTreeLoading(true);
     setWorkingTreeError(undefined);
 
     void api
-      .getOrchestratorSessionChanges(props.session.sessionId)
+      .getOrchestratorSessionChanges(sessionId)
       .then((response) => {
         if (workingTreeRequestRef.current !== requestId) {
           return;
@@ -638,6 +648,10 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
         if (workingTreeRequestRef.current !== requestId) {
           return;
         }
+        if (isMissingOrchestratorSessionError(error)) {
+          props.onSessionMissing?.(sessionId);
+          return;
+        }
         setWorkingTree(undefined);
         setWorkingTreeError(
           error instanceof Error
@@ -650,7 +664,11 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
           setWorkingTreeLoading(false);
         }
       });
-  }, [props.session?.sessionId, props.session?.updatedAt]);
+  }, [
+    props.onSessionMissing,
+    props.session?.sessionId,
+    props.session?.updatedAt,
+  ]);
 
   useEffect(() => {
     streamOffsetRef.current = props.session?.logSize ?? 0;
@@ -801,6 +819,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
       return;
     }
 
+    const sessionId = props.session.sessionId;
     const requestId = changeDiffRequestRef.current + 1;
     changeDiffRequestRef.current = requestId;
     setSelectedChangePath(file.path);
@@ -812,7 +831,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
 
     try {
       const diff = await api.getOrchestratorSessionChangeDiff(
-        props.session.sessionId,
+        sessionId,
         file.path
       );
       if (changeDiffRequestRef.current !== requestId) {
@@ -821,6 +840,10 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
       setSelectedChangeDiff(diff);
     } catch (error) {
       if (changeDiffRequestRef.current !== requestId) {
+        return;
+      }
+      if (isMissingOrchestratorSessionError(error)) {
+        props.onSessionMissing?.(sessionId);
         return;
       }
       setSelectedChangeDiff(undefined);
@@ -852,6 +875,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
       return;
     }
 
+    const sessionId = props.session.sessionId;
     setLoadingMoreOutput(true);
     setTerminalHistoryError(undefined);
 
@@ -865,7 +889,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
         scrollBehaviorRef.current = "preserve";
       }
       const historyChunk = await api.getOrchestratorTerminalHistory(
-        props.session.sessionId,
+        sessionId,
         terminalStartOffset
       );
       if (historyChunk.chunk.length > 0) {
@@ -876,6 +900,10 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
       }
       setTerminalStartOffset(historyChunk.startOffset);
     } catch (error) {
+      if (isMissingOrchestratorSessionError(error)) {
+        props.onSessionMissing?.(sessionId);
+        return;
+      }
       scrollBehaviorRef.current = "bottom";
       scrollSnapshotRef.current = null;
       setTerminalHistoryError(
@@ -1360,6 +1388,25 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                   : `Stream ${streamState === "live" ? "connected" : streamState}`}
               </span>
             </div>
+            {props.onDeleteSession ? (
+              <div className="orchestrator-session-danger">
+                <div>
+                  <strong>Delete session</strong>
+                  <p className="panel-caption">
+                    Permanently remove this session, including terminal output
+                    and queued work.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="ghost-button danger-button"
+                  disabled={props.pending}
+                  onClick={props.onDeleteSession}
+                >
+                  Delete session
+                </button>
+              </div>
+            ) : null}
           </div>
           <div className="orchestrator-session-actions" aria-live="polite">
             <div className="runtime-control orchestrator-changes-control">
@@ -1536,37 +1583,6 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                     : props.session.availableCustomAgents.length > 0
                       ? "The selected custom agent is passed to future delegated Copilot CLI runs."
                       : "No `.agent.md` files were discovered in the project path when this session was created."}
-                </small>
-              </label>
-              <label className="field-group">
-                <span>Execution mode</span>
-                <select
-                  value={executionMode}
-                  disabled={
-                    !selectedSessionDraftCliProvider?.capabilities
-                      .supportsExecutionMode
-                  }
-                  onChange={(event) =>
-                    setExecutionMode(coerceExecutionMode(event.target.value))
-                  }
-                >
-                  <option value="standard">Standard</option>
-                  {selectedSessionDraftCliProvider?.capabilities
-                    .supportsExecutionMode ? (
-                    <>
-                      <option value="fleet">Fleet</option>
-                      <option value="auto">Auto</option>
-                    </>
-                  ) : null}
-                </select>
-                <small className="field-note">
-                  {selectedSessionDraftCliProvider?.capabilities
-                    .supportsExecutionMode
-                    ? 'Fleet runs future delegated Copilot CLI jobs with `-p "/fleet ..."` for explicit parallelization, while Auto starts Copilot with `--mode autopilot`.'
-                    : `${
-                        selectedSessionDraftCliProvider?.displayName ??
-                        "This provider"
-                      } only supports standard delegated runs.`}
                 </small>
               </label>
             </div>

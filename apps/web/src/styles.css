@@ -1610,6 +1610,29 @@ p {
   padding-top: 1rem;
 }
 
+.orchestrator-session-danger,
+.orchestrator-settings-danger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--danger) 28%, var(--border-soft));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--danger) 8%, var(--card-bg));
+}
+
+.orchestrator-session-danger strong,
+.orchestrator-settings-danger strong {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.orchestrator-session-danger .panel-caption,
+.orchestrator-settings-danger .panel-caption {
+  margin: 0;
+}
+
 .collapsible-region {
   display: grid;
   grid-template-rows: 0fr;
@@ -2134,10 +2157,6 @@ p {
 .danger-modal-warning {
   margin: 0;
   color: var(--danger-text);
-}
-
-.danger-modal-checkbox {
-  align-items: flex-start;
 }
 
 .settings-grid {
@@ -2772,9 +2791,8 @@ p {
 
 .orchestrator-session-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
-  gap: 0.65rem;
 }
 
 .orchestrator-session-link {
@@ -2806,23 +2824,6 @@ p {
 .orchestrator-session-link small {
   color: var(--sidebar-meta-color, var(--text-muted));
   line-height: 1.35;
-}
-
-.orchestrator-session-delete-button {
-  min-width: auto;
-  align-self: stretch;
-  padding: 0.65rem;
-  opacity: 0;
-}
-
-.orchestrator-session-delete-button svg {
-  width: 1rem;
-  height: 1rem;
-}
-
-.orchestrator-session-row:hover .orchestrator-session-delete-button,
-.orchestrator-session-row:focus-within .orchestrator-session-delete-button {
-  opacity: 1;
 }
 
 .orchestrator-main {
@@ -2893,12 +2894,7 @@ p {
   }
 
   .orchestrator-session-row {
-    grid-template-columns: minmax(0, 1fr) auto;
     min-width: min(220px, 78vw);
-  }
-
-  .orchestrator-session-delete-button {
-    opacity: 1;
   }
 
   .orchestrator-main {

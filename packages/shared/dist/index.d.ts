@@ -2132,7 +2132,6 @@ declare const orchestratorSessionUpdateSchema: z.ZodObject<{
     cliProvider: z.ZodOptional<z.ZodString>;
     model: z.ZodString;
     selectedCustomAgentId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
-    providerSessionId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     executionMode: z.ZodOptional<z.ZodEnum<{
         standard: "standard";
         fleet: "fleet";

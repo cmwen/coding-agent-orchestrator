@@ -206,7 +206,6 @@ function defaultJobProviderSessionId(
     : undefined;
 }
 
-
 function resolveQueuedJobProviderSession(input: {
   cliProvider: string;
   jobId: string;

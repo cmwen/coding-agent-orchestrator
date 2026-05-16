@@ -115,19 +115,16 @@ test.describe("session delete UX", () => {
       0
     );
 
-    await page
-      .locator(".orchestrator-session-row", {
-        has: page.getByRole("button", { name: "Delete me" }),
-      })
-      .hover();
-    await page
-      .getByRole("button", { name: "Delete session: Delete me" })
-      .click();
+    await page.getByRole("button", { name: "Delete me" }).click();
+    await page.getByRole("button", { name: "Delete session" }).click();
 
     await expect(
-      page.getByRole("heading", { name: "Remove orchestrator session" })
+      page.getByRole("heading", { name: "Delete session" })
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: "Keep it" })).toBeFocused();
+    await expect(page.getByRole("button", { name: "Cancel" })).toBeFocused();
+    await expect(
+      page.getByText('This permanently removes "Delete me" from the app.')
+    ).toBeVisible();
     await expect(
       page.getByText(
         'Session history, terminal output, and queued work for "Delete me" will be deleted.'
@@ -135,16 +132,14 @@ test.describe("session delete UX", () => {
     ).toBeVisible();
 
     await page
-      .getByLabel("I understand this session will be permanently removed.")
-      .check();
-    await page.getByRole("button", { name: "Remove session" }).click();
+      .getByRole("dialog", { name: "Delete session" })
+      .getByRole("button", { name: "Delete session" })
+      .click();
 
-    await expect(
-      page.getByRole("button", { name: "Delete session: Delete me" })
-    ).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: "Delete session: Keep me" })
-    ).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Delete me" })).toHaveCount(
+      0
+    );
+    await expect(page.getByRole("button", { name: "Keep me" })).toHaveCount(1);
     expect(deletedSessionIds).toEqual(["session-2"]);
   });
 });

@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { Modal } from "./Modal";
 
 interface DangerConfirmModalProps {
@@ -6,24 +5,16 @@ interface DangerConfirmModalProps {
   title: string;
   description: string;
   warning: string;
-  acknowledgeLabel: string;
   confirmLabel: string;
   busyLabel?: string;
   details?: string[];
   busy?: boolean;
+  cancelLabel?: string;
   onClose: () => void;
   onConfirm: () => void;
 }
 
 export function DangerConfirmModal(props: DangerConfirmModalProps) {
-  const [acknowledged, setAcknowledged] = useState(false);
-
-  useEffect(() => {
-    if (!props.open) {
-      setAcknowledged(false);
-    }
-  }, [props.open]);
-
   return (
     <Modal
       open={props.open}
@@ -39,15 +30,6 @@ export function DangerConfirmModal(props: DangerConfirmModalProps) {
         </ul>
       ) : null}
       <p className="danger-modal-warning">{props.warning}</p>
-      <label className="checkbox-row danger-modal-checkbox">
-        <input
-          type="checkbox"
-          checked={acknowledged}
-          onChange={(event) => setAcknowledged(event.target.checked)}
-          disabled={props.busy}
-        />
-        <span>{props.acknowledgeLabel}</span>
-      </label>
       <div className="modal-footer">
         <button
           type="button"
@@ -56,13 +38,13 @@ export function DangerConfirmModal(props: DangerConfirmModalProps) {
           disabled={props.busy}
           data-autofocus="true"
         >
-          Keep it
+          {props.cancelLabel ?? "Cancel"}
         </button>
         <button
           type="button"
           className="ghost-button danger-button"
           onClick={props.onConfirm}
-          disabled={!acknowledged || props.busy}
+          disabled={props.busy}
         >
           {props.busy
             ? (props.busyLabel ?? props.confirmLabel)

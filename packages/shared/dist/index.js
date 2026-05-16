@@ -657,7 +657,6 @@ var orchestratorSessionUpdateSchema = z.object({
   cliProvider: z.string().trim().min(1).optional(),
   model: z.string().trim().min(1),
   selectedCustomAgentId: z.string().trim().min(1).nullable().optional(),
-  providerSessionId: z.string().trim().min(1).regex(/^[a-zA-Z0-9_\-.:]+$/, "Invalid session ID format").nullable().optional(),
   executionMode: orchestratorExecutionModeSchema.optional()
 });
 var orchestratorDelegateRequestSchema = z.object({

@@ -394,6 +394,42 @@ export default function App() {
     setSelectedSessionId(session.sessionId);
   }
 
+  function applyExistingSessionUpdate(session: OrchestratorSession) {
+    setSessions((current) => {
+      if (
+        !current.some((candidate) => candidate.sessionId === session.sessionId)
+      ) {
+        return current;
+      }
+      const without = current.filter(
+        (candidate) => candidate.sessionId !== session.sessionId
+      );
+      return [session, ...without].sort((left, right) =>
+        right.updatedAt.localeCompare(left.updatedAt)
+      );
+    });
+  }
+
+  function handleMissingSession(sessionId: string) {
+    const fallbackSessionId = sessions.find(
+      (session) => session.sessionId !== sessionId
+    )?.sessionId;
+    setSessions((current) =>
+      current.filter((session) => session.sessionId !== sessionId)
+    );
+    setSchedules((current) =>
+      current.filter((schedule) => schedule.sessionId !== sessionId)
+    );
+    setPendingDeleteSessionId((current) =>
+      current === sessionId ? undefined : current
+    );
+    setRemoveSessionModalOpen(false);
+    setSelectedSessionId((current) =>
+      current === sessionId ? fallbackSessionId : current
+    );
+    void refreshAll();
+  }
+
   function focusSessionNavButton(sessionId: string) {
     sessionNavRefs.current[sessionId]?.focus();
   }
@@ -597,16 +633,6 @@ export default function App() {
                   {new Date(session.updatedAt).toLocaleString()}
                 </small>
               </button>
-              <button
-                type="button"
-                className="ghost-button danger-button orchestrator-session-delete-button"
-                aria-label={`Delete session: ${session.title}`}
-                title={`Delete ${session.title}`}
-                disabled={pending}
-                onClick={() => handleOpenRemoveSessionModal(session.sessionId)}
-              >
-                <TrashIcon />
-              </button>
             </div>
           ))}
         </div>
@@ -749,7 +775,13 @@ export default function App() {
               await api.deleteOrchestratorSchedule(scheduleId);
             });
           }}
-          onSessionUpdate={applySessionUpdate}
+          onDeleteSession={
+            selectedSession
+              ? () => handleOpenRemoveSessionModal(selectedSession.sessionId)
+              : undefined
+          }
+          onSessionUpdate={applyExistingSessionUpdate}
+          onSessionMissing={handleMissingSession}
         />
       </section>
 
@@ -761,7 +793,7 @@ export default function App() {
       />
       <DangerConfirmModal
         open={removeSessionModalOpen}
-        title="Remove orchestrator session"
+        title="Delete session"
         description={
           pendingDeleteSession
             ? `This permanently removes "${pendingDeleteSession.title}" from the app.`
@@ -772,10 +804,9 @@ export default function App() {
             ? `Session history, terminal output, and queued work for "${pendingDeleteSession.title}" will be deleted.`
             : "Session history, terminal output, and queued work for this session will be deleted."
         }
-        acknowledgeLabel="I understand this session will be permanently removed."
-        confirmLabel="Remove session"
+        confirmLabel="Delete session"
         busy={removingSessions}
-        busyLabel="Removing session..."
+        busyLabel="Deleting session..."
         details={
           pendingDeleteSession ? [pendingDeleteSession.title] : undefined
         }
@@ -906,17 +937,6 @@ function RefreshIcon() {
       <path
         fill="currentColor"
         d="M12 5a7 7 0 0 1 6.3 3.95L20 6.75V13h-6.25l2.76-2.76A4.99 4.99 0 0 0 7 12a5 5 0 0 0 8.66 3.41l1.42 1.42A7 7 0 1 1 12 5Z"
-      />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-      <path
-        fill="currentColor"
-        d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-2 6h2v8H7V9Zm4 0h2v8h-2V9Zm4 0h2v8h-2V9ZM6 21a2 2 0 0 1-2-2V7h16v12a2 2 0 0 1-2 2H6Z"
       />
     </svg>
   );

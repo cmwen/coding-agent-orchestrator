@@ -465,6 +465,207 @@ describe("OrchestratorPane", () => {
     expect(settingsPanel?.getAttribute("aria-hidden")).toBe("true");
   });
 
+  it("shows session deletion inside session details", async () => {
+    const user = userEvent.setup();
+    const onDeleteSession = vi.fn();
+    class MockEventSource {
+      addEventListener = vi.fn();
+      removeEventListener = vi.fn();
+      close = vi.fn();
+      onerror: (() => void) | null = null;
+    }
+    vi.stubGlobal("EventSource", MockEventSource);
+
+    render(
+      <OrchestratorPane
+        capabilities={{
+          available: true,
+          defaultProjectPath: "/tmp/project",
+          recentProjectPaths: ["/tmp/another-project"],
+          tmuxInstalled: true,
+          copilotInstalled: true,
+          geminiInstalled: false,
+          defaultCliProvider: "copilot",
+          cliProviders: [
+            {
+              id: "copilot",
+              displayName: "GitHub Copilot CLI",
+              description: "Uses the installed copilot CLI.",
+              capabilities: {
+                supportsCustomAgents: true,
+                supportsExecutionMode: true,
+              },
+            },
+          ],
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+        }}
+        session={{
+          sessionId: "2026-03-20-repo-support",
+          agentId: "copilot-orchestrator",
+          title: "Repo support",
+          startedAt: "2026-03-20T12:00:00Z",
+          updatedAt: "2026-03-20T12:05:00Z",
+          summary: "Handle runtime support work",
+          projectPath: "/tmp/project",
+          projectPurpose: "Handle runtime support work",
+          model: "gpt-5",
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+          tmuxWindowName: "project-repo-support-0001",
+          tmuxPaneId: "%42",
+          status: "idle",
+          activeJobId: undefined,
+          lastJobId: undefined,
+          availableCustomAgents: [],
+          selectedCustomAgentId: undefined,
+          executionMode: "standard",
+          sessionDirectory: "/tmp/session",
+          manifestPath:
+            "agents/copilot-orchestrator/history/2026-03/2026-03-20-repo-support/SESSION.md",
+          jobs: [],
+          terminalTail: "",
+          logSize: 0,
+        }}
+        models={[
+          {
+            id: "gpt-5",
+            displayName: "GPT-5",
+            runtimeProvider: "copilot",
+            supportedReasoningEfforts: [],
+          },
+        ]}
+        defaultModelId="gpt-5"
+        projectPathSuggestions={["/tmp/project", "/tmp/another-project"]}
+        pending={false}
+        onCreateSession={() => undefined}
+        onUpdateSession={() => undefined}
+        onDelegate={() => undefined}
+        onSendInput={() => undefined}
+        onCancelJob={() => undefined}
+        onRestartSession={() => undefined}
+        onDeleteQueuedJob={() => undefined}
+        schedules={[]}
+        onCreateSchedule={() => undefined}
+        onUpdateSchedule={() => undefined}
+        onDeleteSchedule={() => undefined}
+        onDeleteSession={onDeleteSession}
+        onSessionUpdate={() => undefined}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "Delete session" }));
+
+    expect(onDeleteSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("notifies the app when the selected session is missing", async () => {
+    const onSessionMissing = vi.fn();
+    class MockEventSource {
+      addEventListener = vi.fn();
+      removeEventListener = vi.fn();
+      close = vi.fn();
+      onerror: (() => void) | null = null;
+    }
+    vi.stubGlobal("EventSource", MockEventSource);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: "Orchestrator session not found: session-1",
+            }),
+            {
+              status: 404,
+              headers: { "content-type": "application/json" },
+            }
+          )
+      )
+    );
+
+    render(
+      <OrchestratorPane
+        capabilities={{
+          available: true,
+          defaultProjectPath: "/tmp/project",
+          recentProjectPaths: ["/tmp/another-project"],
+          tmuxInstalled: true,
+          copilotInstalled: true,
+          geminiInstalled: false,
+          defaultCliProvider: "copilot",
+          cliProviders: [
+            {
+              id: "copilot",
+              displayName: "GitHub Copilot CLI",
+              description: "Uses the installed copilot CLI.",
+              capabilities: {
+                supportsCustomAgents: true,
+                supportsExecutionMode: true,
+              },
+            },
+          ],
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+        }}
+        session={{
+          sessionId: "session-1",
+          agentId: "copilot-orchestrator",
+          title: "Repo support",
+          startedAt: "2026-03-20T12:00:00Z",
+          updatedAt: "2026-03-20T12:05:00Z",
+          summary: "Handle runtime support work",
+          projectPath: "/tmp/project",
+          projectPurpose: "Handle runtime support work",
+          model: "gpt-5",
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+          tmuxWindowName: "project-repo-support-0001",
+          tmuxPaneId: "%42",
+          status: "idle",
+          activeJobId: undefined,
+          lastJobId: undefined,
+          availableCustomAgents: [],
+          selectedCustomAgentId: undefined,
+          executionMode: "standard",
+          sessionDirectory: "/tmp/session",
+          manifestPath:
+            "agents/copilot-orchestrator/history/2026-03/2026-03-20-repo-support/SESSION.md",
+          jobs: [],
+          terminalTail: "",
+          logSize: 0,
+        }}
+        models={[
+          {
+            id: "gpt-5",
+            displayName: "GPT-5",
+            runtimeProvider: "copilot",
+            supportedReasoningEfforts: [],
+          },
+        ]}
+        defaultModelId="gpt-5"
+        projectPathSuggestions={["/tmp/project", "/tmp/another-project"]}
+        pending={false}
+        onCreateSession={() => undefined}
+        onUpdateSession={() => undefined}
+        onDelegate={() => undefined}
+        onSendInput={() => undefined}
+        onCancelJob={() => undefined}
+        onRestartSession={() => undefined}
+        onDeleteQueuedJob={() => undefined}
+        schedules={[]}
+        onCreateSchedule={() => undefined}
+        onUpdateSchedule={() => undefined}
+        onDeleteSchedule={() => undefined}
+        onSessionUpdate={() => undefined}
+        onSessionMissing={onSessionMissing}
+      />
+    );
+
+    await waitFor(() =>
+      expect(onSessionMissing).toHaveBeenCalledWith("session-1")
+    );
+    expect(
+      screen.queryByText("Orchestrator session not found: session-1")
+    ).toBeNull();
+  });
+
   it("shows the latest coding agent session ID on the session overview", () => {
     class MockEventSource {
       addEventListener = vi.fn();
@@ -802,9 +1003,8 @@ describe("OrchestratorPane", () => {
     expect(onDeleteOlderDuplicate).toHaveBeenCalledWith("older-match");
   });
 
-  it("lets users switch a session to fleet mode", async () => {
+  it("does not show execution mode in session settings", async () => {
     const user = userEvent.setup();
-    const onUpdateSession = vi.fn();
     class MockEventSource {
       addEventListener = vi.fn();
       removeEventListener = vi.fn();
@@ -874,7 +1074,7 @@ describe("OrchestratorPane", () => {
         projectPathSuggestions={["/tmp/project", "/tmp/another-project"]}
         pending={false}
         onCreateSession={() => undefined}
-        onUpdateSession={onUpdateSession}
+        onUpdateSession={() => undefined}
         onDelegate={() => undefined}
         onSendInput={() => undefined}
         onCancelJob={() => undefined}
@@ -889,121 +1089,8 @@ describe("OrchestratorPane", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /session settings/i }));
-    await user.selectOptions(
-      screen.getAllByRole("combobox")[3] ?? document.body,
-      "fleet"
-    );
-    await user.click(screen.getByRole("button", { name: "Save details" }));
-
-    expect(onUpdateSession).toHaveBeenCalledWith({
-      title: "Repo support",
-      cliProvider: "copilot",
-      model: "gpt-5",
-      selectedCustomAgentId: null,
-      executionMode: "fleet",
-    });
-  });
-
-  it("lets users switch a session to auto mode", async () => {
-    const user = userEvent.setup();
-    const onUpdateSession = vi.fn();
-    class MockEventSource {
-      addEventListener = vi.fn();
-      removeEventListener = vi.fn();
-      close = vi.fn();
-      onerror: (() => void) | null = null;
-    }
-    vi.stubGlobal("EventSource", MockEventSource);
-
-    render(
-      <OrchestratorPane
-        capabilities={{
-          available: true,
-          defaultProjectPath: "/tmp/project",
-          recentProjectPaths: ["/tmp/another-project"],
-          tmuxInstalled: true,
-          copilotInstalled: true,
-          geminiInstalled: false,
-          defaultCliProvider: "copilot",
-          cliProviders: [
-            {
-              id: "copilot",
-              displayName: "GitHub Copilot CLI",
-              description: "Uses the installed copilot CLI.",
-              capabilities: {
-                supportsCustomAgents: true,
-                supportsExecutionMode: true,
-              },
-            },
-          ],
-          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
-        }}
-        session={{
-          sessionId: "2026-03-20-repo-support",
-          agentId: "copilot-orchestrator",
-          title: "Repo support",
-          startedAt: "2026-03-20T12:00:00Z",
-          updatedAt: "2026-03-20T12:05:00Z",
-          summary: "Handle runtime support work",
-          projectPath: "/tmp/project",
-          projectPurpose: "Handle runtime support work",
-          model: "gpt-5",
-          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
-          tmuxWindowName: "project-repo-support-0001",
-          tmuxPaneId: "%42",
-          status: "idle",
-          activeJobId: undefined,
-          lastJobId: undefined,
-          availableCustomAgents: [],
-          selectedCustomAgentId: undefined,
-          executionMode: "standard",
-          sessionDirectory: "/tmp/session",
-          manifestPath:
-            "agents/copilot-orchestrator/history/2026-03/2026-03-20-repo-support/SESSION.md",
-          jobs: [],
-          terminalTail: "",
-          logSize: 0,
-        }}
-        models={[
-          {
-            id: "gpt-5",
-            displayName: "GPT-5",
-            runtimeProvider: "copilot",
-            supportedReasoningEfforts: [],
-          },
-        ]}
-        defaultModelId="gpt-5"
-        projectPathSuggestions={["/tmp/project", "/tmp/another-project"]}
-        pending={false}
-        onCreateSession={() => undefined}
-        onUpdateSession={onUpdateSession}
-        onDelegate={() => undefined}
-        onSendInput={() => undefined}
-        onCancelJob={() => undefined}
-        onRestartSession={() => undefined}
-        onDeleteQueuedJob={() => undefined}
-        schedules={[]}
-        onCreateSchedule={() => undefined}
-        onUpdateSchedule={() => undefined}
-        onDeleteSchedule={() => undefined}
-        onSessionUpdate={() => undefined}
-      />
-    );
-
-    await user.click(screen.getByRole("button", { name: /session settings/i }));
-    await user.selectOptions(
-      screen.getAllByRole("combobox")[3] ?? document.body,
-      "auto"
-    );
-    await user.click(screen.getByRole("button", { name: "Save details" }));
-
-    expect(onUpdateSession).toHaveBeenCalledWith({
-      title: "Repo support",
-      cliProvider: "copilot",
-      model: "gpt-5",
-      selectedCustomAgentId: null,
-      executionMode: "auto",
-    });
+    expect(screen.queryByText("Execution mode")).toBeNull();
+    expect(screen.getAllByText("Mode: Standard").length).toBeGreaterThan(0);
   });
 
   it("sends one attached file with a delegated prompt", async () => {
