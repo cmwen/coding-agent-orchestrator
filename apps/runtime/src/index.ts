@@ -164,12 +164,26 @@ app.get("/api/orchestrator/sessions/:sessionId/terminal", async (context) => {
 });
 
 app.post("/api/orchestrator/sessions/:sessionId/jobs", async (context) => {
+  const rawBody = await context.req.json();
+  console.log("[delegate] Raw request body:", JSON.stringify(rawBody, null, 2));
   const request = orchestratorDelegateRequestSchema.parse(
-    (await context.req.json()) satisfies OrchestratorDelegateRequest
+    rawBody satisfies OrchestratorDelegateRequest
   );
-  return context.json(
-    await orchestrator.delegate(context.req.param("sessionId"), request)
+  console.log(
+    "[delegate] Parsed request — providerSessionId:",
+    JSON.stringify(request.providerSessionId),
+    "| prompt preview:",
+    request.prompt?.slice(0, 80)
   );
+  const result = await orchestrator.delegate(
+    context.req.param("sessionId"),
+    request
+  );
+  console.log(
+    "[delegate] Job queued — providerSessionId on saved job:",
+    JSON.stringify(result.jobs.at(-1)?.providerSessionId)
+  );
+  return context.json(result);
 });
 
 app.post(

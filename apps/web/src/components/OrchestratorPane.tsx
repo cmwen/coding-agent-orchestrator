@@ -1194,6 +1194,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                 value={providerSessionId}
                 onChange={(event) => setProviderSessionId(event.target.value)}
                 placeholder="Optional existing coding agent session ID"
+                autoComplete="off"
               />
               <small className="field-note">
                 {providerSessionFieldNote(cliProvider)}
@@ -1553,6 +1554,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                       setSessionProviderSessionId(event.target.value)
                     }
                     placeholder="Optional existing coding agent session ID"
+                    autoComplete="off"
                   />
                   <small className="field-note">
                     {providerSessionFieldNote(
@@ -2047,6 +2049,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                   setDelegateProviderSessionId(event.target.value)
                 }
                 placeholder="Leave blank to start a fresh task session"
+                autoComplete="off"
               />
               <small className="field-note">
                 {delegateProviderSessionId.trim()

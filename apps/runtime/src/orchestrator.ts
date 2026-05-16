@@ -1323,6 +1323,14 @@ export class TmuxOrchestratorService {
         ? "file"
         : "inline";
     const premiumUsage = await this.estimatePremiumUsage(session.model);
+    console.log(
+      "[queueDelegation] options.providerSessionId:",
+      JSON.stringify(options.providerSessionId),
+      "| session.providerSessionId:",
+      JSON.stringify(session.providerSessionId),
+      "| cliProvider:",
+      cliProvider
+    );
     const job = await createOrchestratorJob(this.workspace, session.sessionId, {
       prompt: delegatedPrompt,
       promptPreview:
@@ -1340,6 +1348,10 @@ export class TmuxOrchestratorService {
       scheduleId: options.scheduleId,
       premiumUsage,
     });
+    console.log(
+      "[queueDelegation] job.providerSessionId after create:",
+      JSON.stringify(job.providerSessionId)
+    );
     const { providerSessionId, resumeProviderSession } =
       resolveQueuedJobProviderSession({
         cliProvider,
@@ -1347,6 +1359,10 @@ export class TmuxOrchestratorService {
         sessionProviderSessionId: session.providerSessionId,
         requestedProviderSessionId: options.providerSessionId,
       });
+    console.log(
+      "[queueDelegation] resolveQueuedJobProviderSession =>",
+      JSON.stringify({ providerSessionId, resumeProviderSession })
+    );
     const effectiveJob =
       providerSessionId === job.providerSessionId
         ? job

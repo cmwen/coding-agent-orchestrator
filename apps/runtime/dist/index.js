@@ -1069,6 +1069,14 @@ var TmuxOrchestratorService = class {
     const cliProvider = session.cliProvider ?? DEFAULT_ORCHESTRATOR_CLI_PROVIDER;
     const promptMode = attachment || shouldMaterializePrompt(delegatedPrompt) ? "file" : "inline";
     const premiumUsage = await this.estimatePremiumUsage(session.model);
+    console.log(
+      "[queueDelegation] options.providerSessionId:",
+      JSON.stringify(options.providerSessionId),
+      "| session.providerSessionId:",
+      JSON.stringify(session.providerSessionId),
+      "| cliProvider:",
+      cliProvider
+    );
     const job = await createOrchestratorJob(this.workspace, session.sessionId, {
       prompt: delegatedPrompt,
       promptPreview: delegatedPrompt.trim().slice(0, 160) || attachment?.name || "Delegated prompt",
@@ -1081,12 +1089,20 @@ var TmuxOrchestratorService = class {
       scheduleId: options.scheduleId,
       premiumUsage
     });
+    console.log(
+      "[queueDelegation] job.providerSessionId after create:",
+      JSON.stringify(job.providerSessionId)
+    );
     const { providerSessionId, resumeProviderSession } = resolveQueuedJobProviderSession({
       cliProvider,
       jobId: job.jobId,
       sessionProviderSessionId: session.providerSessionId,
       requestedProviderSessionId: options.providerSessionId
     });
+    console.log(
+      "[queueDelegation] resolveQueuedJobProviderSession =>",
+      JSON.stringify({ providerSessionId, resumeProviderSession })
+    );
     const effectiveJob = providerSessionId === job.providerSessionId ? job : {
       ...job,
       providerSessionId
@@ -2424,12 +2440,31 @@ app.get("/api/orchestrator/sessions/:sessionId/terminal", async (context) => {
   return context.json(chunk);
 });
 app.post("/api/orchestrator/sessions/:sessionId/jobs", async (context) => {
+  const rawBody = await context.req.json();
+  console.log(
+    "[delegate] Raw request body:",
+    JSON.stringify(rawBody, null, 2)
+  );
   const request = orchestratorDelegateRequestSchema.parse(
-    await context.req.json()
+    rawBody
   );
-  return context.json(
-    await orchestrator.delegate(context.req.param("sessionId"), request)
+  console.log(
+    "[delegate] Parsed request \u2014 providerSessionId:",
+    JSON.stringify(request.providerSessionId),
+    "| prompt preview:",
+    request.prompt?.slice(0, 80)
   );
+  const result = await orchestrator.delegate(
+    context.req.param("sessionId"),
+    request
+  );
+  console.log(
+    "[delegate] Job queued \u2014 providerSessionId on saved job:",
+    JSON.stringify(
+      result.jobs.at(-1)?.providerSessionId
+    )
+  );
+  return context.json(result);
 });
 app.post(
   "/api/orchestrator/sessions/:sessionId/jobs/:jobId/retry",
