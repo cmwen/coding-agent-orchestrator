@@ -165,11 +165,23 @@ interface QueueDelegationResult {
   systemNotice?: string;
 }
 
+const VALID_PROVIDER_SESSION_ID_RE = /^[a-zA-Z0-9_\-.:]+$/;
+
 function normalizeProviderSessionId(
   value: string | null | undefined
 ): string | undefined {
   const normalized = value?.trim();
-  return normalized ? normalized : undefined;
+  if (!normalized) {
+    return undefined;
+  }
+  if (!VALID_PROVIDER_SESSION_ID_RE.test(normalized)) {
+    console.warn(
+      "[normalizeProviderSessionId] Discarding invalid providerSessionId:",
+      JSON.stringify(normalized)
+    );
+    return undefined;
+  }
+  return normalized;
 }
 
 function supportsProviderSessionResume(cliProvider?: string): boolean {

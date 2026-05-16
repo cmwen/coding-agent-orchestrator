@@ -852,7 +852,7 @@ export const orchestratorSessionCreateSchema = z.object({
     .string()
     .trim()
     .min(1)
-    .regex(/^[a-zA-Z0-9_\-.:.]+$/, "Invalid session ID format")
+    .regex(/^[a-zA-Z0-9_\-.:]+$/, "Invalid session ID format")
     .optional(),
   executionMode: orchestratorExecutionModeSchema.optional(),
   prompt: z.string().min(1).optional(),
@@ -870,7 +870,7 @@ export const orchestratorSessionUpdateSchema = z.object({
     .string()
     .trim()
     .min(1)
-    .regex(/^[a-zA-Z0-9_\-.:.]+$/, "Invalid session ID format")
+    .regex(/^[a-zA-Z0-9_\-.:]+$/, "Invalid session ID format")
     .nullable()
     .optional(),
   executionMode: orchestratorExecutionModeSchema.optional(),
@@ -886,7 +886,7 @@ export const orchestratorDelegateRequestSchema = z.object({
     .string()
     .trim()
     .min(1)
-    .regex(/^[a-zA-Z0-9_\-.:.]+$/, "Invalid session ID format")
+    .regex(/^[a-zA-Z0-9_\-.:]+$/, "Invalid session ID format")
     .optional(),
   attachment: attachmentUploadSchema.optional(),
 });

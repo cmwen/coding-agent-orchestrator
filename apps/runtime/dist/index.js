@@ -192,9 +192,20 @@ var ORCHESTRATOR_CLI_PROVIDERS = [
   CODEX_CLI_PROVIDER,
   OPENCODE_CLI_PROVIDER
 ];
+var VALID_PROVIDER_SESSION_ID_RE = /^[a-zA-Z0-9_\-.:]+$/;
 function normalizeProviderSessionId(value) {
   const normalized = value?.trim();
-  return normalized ? normalized : void 0;
+  if (!normalized) {
+    return void 0;
+  }
+  if (!VALID_PROVIDER_SESSION_ID_RE.test(normalized)) {
+    console.warn(
+      "[normalizeProviderSessionId] Discarding invalid providerSessionId:",
+      JSON.stringify(normalized)
+    );
+    return void 0;
+  }
+  return normalized;
 }
 function supportsProviderSessionResume(cliProvider) {
   return cliProvider === COPILOT_CLI_PROVIDER.id || cliProvider === GEMINI_CLI_PROVIDER.id || cliProvider === CODEX_CLI_PROVIDER.id || cliProvider === OPENCODE_CLI_PROVIDER.id;
@@ -2441,10 +2452,7 @@ app.get("/api/orchestrator/sessions/:sessionId/terminal", async (context) => {
 });
 app.post("/api/orchestrator/sessions/:sessionId/jobs", async (context) => {
   const rawBody = await context.req.json();
-  console.log(
-    "[delegate] Raw request body:",
-    JSON.stringify(rawBody, null, 2)
-  );
+  console.log("[delegate] Raw request body:", JSON.stringify(rawBody, null, 2));
   const request = orchestratorDelegateRequestSchema.parse(
     rawBody
   );
@@ -2460,9 +2468,7 @@ app.post("/api/orchestrator/sessions/:sessionId/jobs", async (context) => {
   );
   console.log(
     "[delegate] Job queued \u2014 providerSessionId on saved job:",
-    JSON.stringify(
-      result.jobs.at(-1)?.providerSessionId
-    )
+    JSON.stringify(result.jobs.at(-1)?.providerSessionId)
   );
   return context.json(result);
 });

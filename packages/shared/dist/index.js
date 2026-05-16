@@ -648,7 +648,7 @@ var orchestratorSessionCreateSchema = z.object({
   cliProvider: z.string().min(1).optional(),
   model: z.string().min(1).default(DEFAULT_CHAT_MODEL),
   selectedCustomAgentId: z.string().trim().min(1).nullable().optional(),
-  providerSessionId: z.string().trim().min(1).regex(/^[a-zA-Z0-9_\-.:.]+$/, "Invalid session ID format").optional(),
+  providerSessionId: z.string().trim().min(1).regex(/^[a-zA-Z0-9_\-.:]+$/, "Invalid session ID format").optional(),
   executionMode: orchestratorExecutionModeSchema.optional(),
   prompt: z.string().min(1).optional()
 });
@@ -657,13 +657,13 @@ var orchestratorSessionUpdateSchema = z.object({
   cliProvider: z.string().trim().min(1).optional(),
   model: z.string().trim().min(1),
   selectedCustomAgentId: z.string().trim().min(1).nullable().optional(),
-  providerSessionId: z.string().trim().min(1).regex(/^[a-zA-Z0-9_\-.:.]+$/, "Invalid session ID format").nullable().optional(),
+  providerSessionId: z.string().trim().min(1).regex(/^[a-zA-Z0-9_\-.:]+$/, "Invalid session ID format").nullable().optional(),
   executionMode: orchestratorExecutionModeSchema.optional()
 });
 var orchestratorDelegateRequestSchema = z.object({
   prompt: z.string().default(""),
   customAgentId: z.string().trim().min(1).nullable().optional(),
-  providerSessionId: z.string().trim().min(1).regex(/^[a-zA-Z0-9_\-.:.]+$/, "Invalid session ID format").optional(),
+  providerSessionId: z.string().trim().min(1).regex(/^[a-zA-Z0-9_\-.:]+$/, "Invalid session ID format").optional(),
   attachment: attachmentUploadSchema.optional()
 });
 var orchestratorTerminalInputSchema = z.object({
