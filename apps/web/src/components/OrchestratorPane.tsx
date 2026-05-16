@@ -231,6 +231,16 @@ function getLatestKnownProviderSession(session?: OrchestratorSession): {
   };
 }
 
+function shouldStreamSession(session?: OrchestratorSession): boolean {
+  if (!session) {
+    return false;
+  }
+  if (session.status === "running" || session.activeJobId) {
+    return true;
+  }
+  return session.jobs.some((job) => job.status === "running");
+}
+
 export function OrchestratorPane(props: OrchestratorPaneProps) {
   const defaultCliProvider =
     props.defaultCliProvider ??
@@ -366,6 +376,10 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
     props.session?.model,
     sessionCliProvider,
   ]);
+  const streamEnabled = useMemo(
+    () => shouldStreamSession(props.session),
+    [props.session]
+  );
   const selectedNewSessionModel = useMemo(
     () => modelOptions.find((model) => model.id === modelId),
     [modelId, modelOptions]
@@ -720,6 +734,10 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
       setStreamState("idle");
       return;
     }
+    if (!streamEnabled) {
+      setStreamState("idle");
+      return;
+    }
     if (typeof EventSource === "undefined") {
       setStreamState("closed");
       return;
@@ -792,7 +810,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
       eventSource.close();
       setStreamState("closed");
     };
-  }, [props.session?.sessionId, streamReconnectToken]);
+  }, [props.session?.sessionId, streamEnabled, streamReconnectToken]);
 
   const canLoadMoreOutput = !!props.session && terminalStartOffset > 0;
   const visibleWorkingTreeFiles = workingTree?.files ?? [];

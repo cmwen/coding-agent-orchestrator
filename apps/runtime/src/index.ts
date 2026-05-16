@@ -1,4 +1,4 @@
-import { promises as fs } from "node:fs";
+import { type FSWatcher, promises as fs, watch } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
@@ -40,6 +40,8 @@ import { computeNextRunAt, OrchestratorScheduleService } from "./scheduler.js";
 const workspace = await resolveWorkspace();
 const defaultProjectPath = process.cwd();
 const ORCHESTRATOR_TERMINAL_PAGE_LINE_LIMIT = 2_000;
+const ORCHESTRATOR_STATE_FILENAME = "ORCHESTRATOR.json";
+const ORCHESTRATOR_TERMINAL_LOG_FILENAME = "pane.log";
 const orchestrator = new TmuxOrchestratorService(workspace, defaultProjectPath);
 const scheduleService = new OrchestratorScheduleService(
   workspace,
@@ -292,14 +294,22 @@ async function streamOrchestratorTerminal(
   sessionId: string
 ) {
   const initialSession = await orchestrator.getSession(sessionId);
+  const terminalDirectory = path.join(
+    initialSession.sessionDirectory,
+    "terminal"
+  );
+  const sessionDirectory = initialSession.sessionDirectory;
   const { incoming, outgoing } = context.env;
   let closed = false;
   let busy = false;
+  let pendingTick = false;
   let offset = Number.parseInt(context.req.query("offset") ?? "0", 10);
   if (!Number.isFinite(offset) || offset < 0) {
     offset = 0;
   }
   let lastSessionSignal = buildSessionSignal(initialSession);
+  let pollingInterval: NodeJS.Timeout | undefined;
+  const watchers: FSWatcher[] = [];
 
   const sendEvent = (event: string, data: unknown) => {
     if (closed) {
@@ -328,8 +338,31 @@ async function streamOrchestratorTerminal(
     });
   }
 
+  const shouldPollWhileStreaming = (
+    session: Pick<OrchestratorSession, "status" | "activeJobId">
+  ) => session.status === "running" || !!session.activeJobId;
+
+  const syncPollingState = (
+    session: Pick<OrchestratorSession, "status" | "activeJobId">
+  ) => {
+    const shouldPoll = shouldPollWhileStreaming(session);
+    if (shouldPoll && !pollingInterval) {
+      pollingInterval = setInterval(() => {
+        void requestTick();
+      }, 1_000);
+      pollingInterval.unref?.();
+      return;
+    }
+
+    if (!shouldPoll && pollingInterval) {
+      clearInterval(pollingInterval);
+      pollingInterval = undefined;
+    }
+  };
+
   const tick = async () => {
     if (closed || busy) {
+      pendingTick = true;
       return;
     }
     busy = true;
@@ -346,6 +379,7 @@ async function streamOrchestratorTerminal(
         lastSessionSignal = nextSessionSignal;
         sendEvent("session", session);
       }
+      syncPollingState(session);
 
       sendEvent("heartbeat", {
         offset,
@@ -359,19 +393,68 @@ async function streamOrchestratorTerminal(
       cleanup();
     } finally {
       busy = false;
+      if (!closed && pendingTick) {
+        pendingTick = false;
+        queueMicrotask(() => {
+          void tick();
+        });
+      }
     }
   };
 
-  const interval = setInterval(() => {
+  const requestTick = () => {
+    pendingTick = true;
     void tick();
-  }, 1000);
+  };
+
+  const watchDirectory = (
+    directoryPath: string,
+    fileName: string,
+    onMatch: () => void
+  ) => {
+    try {
+      const watcher = watch(
+        directoryPath,
+        { persistent: false },
+        (event, name) => {
+          if (event !== "change" && event !== "rename") {
+            return;
+          }
+          if (!name || name.toString() !== fileName) {
+            return;
+          }
+          onMatch();
+        }
+      );
+      watchers.push(watcher);
+    } catch (error) {
+      if (!isNodeError(error) || error.code !== "ENOENT") {
+        throw error;
+      }
+    }
+  };
+
+  watchDirectory(terminalDirectory, ORCHESTRATOR_TERMINAL_LOG_FILENAME, () => {
+    requestTick();
+  });
+  watchDirectory(sessionDirectory, ORCHESTRATOR_STATE_FILENAME, () => {
+    requestTick();
+  });
+  syncPollingState(initialSession);
+  requestTick();
 
   const cleanup = () => {
     if (closed) {
       return;
     }
     closed = true;
-    clearInterval(interval);
+    for (const watcher of watchers) {
+      watcher.close();
+    }
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+      pollingInterval = undefined;
+    }
     outgoing.end();
   };
 
