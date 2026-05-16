@@ -253,9 +253,6 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
   const [sessionCustomAgentId, setSessionCustomAgentId] = useState(
     props.session?.selectedCustomAgentId ?? ""
   );
-  const [sessionProviderSessionId, setSessionProviderSessionId] = useState(
-    props.session?.providerSessionId ?? ""
-  );
   const [executionMode, setExecutionMode] = useState(
     props.session?.executionMode ?? "standard"
   );
@@ -554,7 +551,6 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
       setSessionCliProvider(defaultCliProvider);
       setSessionModelId(props.defaultModelId);
       setSessionCustomAgentId("");
-      setSessionProviderSessionId("");
       setExecutionMode("standard");
       setSettingsOpen(false);
       return;
@@ -563,14 +559,12 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
     setSessionCliProvider(props.session.cliProvider ?? defaultCliProvider);
     setSessionModelId(props.session.model);
     setSessionCustomAgentId(props.session.selectedCustomAgentId ?? "");
-    setSessionProviderSessionId(props.session.providerSessionId ?? "");
     setExecutionMode(props.session.executionMode ?? "standard");
   }, [
     defaultCliProvider,
     props.defaultModelId,
     props.session?.cliProvider,
     props.session?.executionMode,
-    props.session?.providerSessionId,
     props.session?.selectedCustomAgentId,
     props.session?.model,
     props.session?.sessionId,
@@ -938,7 +932,6 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
       sessionCliProvider !== props.session.cliProvider ||
       sessionModelId !== props.session.model ||
       sessionCustomAgentId !== (props.session.selectedCustomAgentId ?? "") ||
-      sessionProviderSessionId !== (props.session.providerSessionId ?? "") ||
       executionMode !== props.session.executionMode);
   const canSaveSessionDetails =
     !!props.session &&
@@ -1545,25 +1538,6 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                       : "No `.agent.md` files were discovered in the project path when this session was created."}
                 </small>
               </label>
-              {supportsProviderSessionResume(sessionCliProvider) ? (
-                <label className="field-group">
-                  <span>Coding agent session ID</span>
-                  <input
-                    value={sessionProviderSessionId}
-                    onChange={(event) =>
-                      setSessionProviderSessionId(event.target.value)
-                    }
-                    placeholder="Optional existing coding agent session ID"
-                    autoComplete="off"
-                  />
-                  <small className="field-note">
-                    {providerSessionFieldNote(
-                      sessionCliProvider,
-                      props.session.sessionId
-                    )}
-                  </small>
-                </label>
-              ) : null}
               <label className="field-group">
                 <span>Execution mode</span>
                 <select
@@ -1615,12 +1589,6 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                   Custom agent:{" "}
                   {selectedSessionDraftCustomAgent?.name ?? "None"}
                 </span>
-                {supportsProviderSessionResume(sessionCliProvider) ? (
-                  <span>
-                    Saved default coding agent session ID:{" "}
-                    {sessionProviderSessionId.trim() || "not set"}
-                  </span>
-                ) : null}
                 <span>Mode: {executionModeLabel(executionMode)}</span>
                 <span>Applies to future delegated jobs</span>
               </div>
@@ -1636,7 +1604,6 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                     cliProvider: sessionCliProvider,
                     model: sessionModelId,
                     selectedCustomAgentId: sessionCustomAgentId || null,
-                    providerSessionId: sessionProviderSessionId.trim() || null,
                     executionMode,
                   });
                 }}
@@ -2053,10 +2020,8 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
               />
               <small className="field-note">
                 {delegateProviderSessionId.trim()
-                  ? "Used only for the next delegated task."
-                  : props.session.providerSessionId
-                    ? `Blank uses the saved default coding agent session ${props.session.providerSessionId}.`
-                    : "Use Continue from the task queue or a previous matching session to reuse an earlier coding agent session without changing future defaults."}
+                  ? "Used only for this delegated task."
+                  : "Leave blank to always start a fresh coding agent session."}
               </small>
             </label>
           ) : null}
@@ -2078,11 +2043,6 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                 <span>
                   Next task resumes coding agent session{" "}
                   {delegateProviderSessionId.trim()}
-                </span>
-              ) : props.session.providerSessionId ? (
-                <span>
-                  Uses saved default coding agent session{" "}
-                  {props.session.providerSessionId}
                 </span>
               ) : supportsProviderSessionResume(props.session.cliProvider) ? (
                 <span>

@@ -206,27 +206,10 @@ function defaultJobProviderSessionId(
     : undefined;
 }
 
-function resolveUpdatedProviderSessionId(input: {
-  cliProvider: string;
-  currentCliProvider?: string;
-  currentProviderSessionId?: string;
-  requestedProviderSessionId: string | null | undefined;
-}): string | undefined {
-  if (input.requestedProviderSessionId !== undefined) {
-    return normalizeProviderSessionId(input.requestedProviderSessionId);
-  }
-
-  if (input.cliProvider === input.currentCliProvider) {
-    return input.currentProviderSessionId;
-  }
-
-  return undefined;
-}
 
 function resolveQueuedJobProviderSession(input: {
   cliProvider: string;
   jobId: string;
-  sessionProviderSessionId?: string;
   requestedProviderSessionId?: string | null;
 }): { providerSessionId?: string; resumeProviderSession: boolean } {
   const requestedProviderSessionId = normalizeProviderSessionId(
@@ -235,16 +218,6 @@ function resolveQueuedJobProviderSession(input: {
   if (requestedProviderSessionId) {
     return {
       providerSessionId: requestedProviderSessionId,
-      resumeProviderSession: true,
-    };
-  }
-
-  const sessionProviderSessionId = normalizeProviderSessionId(
-    input.sessionProviderSessionId
-  );
-  if (sessionProviderSessionId) {
-    return {
-      providerSessionId: sessionProviderSessionId,
       resumeProviderSession: true,
     };
   }
@@ -475,12 +448,6 @@ export class TmuxOrchestratorService {
             request.selectedCustomAgentId
           )
         : undefined;
-    const providerSessionId = resolveUpdatedProviderSessionId({
-      cliProvider,
-      currentCliProvider: session.cliProvider,
-      currentProviderSessionId: session.providerSessionId,
-      requestedProviderSessionId: request.providerSessionId,
-    });
     const executionMode =
       cliProvider === COPILOT_CLI_PROVIDER.id
         ? (request.executionMode ?? session.executionMode ?? "standard")
@@ -496,7 +463,6 @@ export class TmuxOrchestratorService {
         (session.cliProvider ?? DEFAULT_ORCHESTRATOR_CLI_PROVIDER) ||
       model !== session.model ||
       selectedCustomAgentId !== session.selectedCustomAgentId ||
-      providerSessionId !== session.providerSessionId ||
       executionMode !== (session.executionMode ?? "standard") ||
       tmuxWindowName !== session.tmuxWindowName;
     if (!hasChanges) {
@@ -521,7 +487,6 @@ export class TmuxOrchestratorService {
       model,
       availableCustomAgents,
       selectedCustomAgentId,
-      providerSessionId,
       executionMode,
       tmuxWindowName,
     });
@@ -1338,8 +1303,6 @@ export class TmuxOrchestratorService {
     console.log(
       "[queueDelegation] options.providerSessionId:",
       JSON.stringify(options.providerSessionId),
-      "| session.providerSessionId:",
-      JSON.stringify(session.providerSessionId),
       "| cliProvider:",
       cliProvider
     );
@@ -1350,9 +1313,7 @@ export class TmuxOrchestratorService {
         attachment?.name ||
         "Delegated prompt",
       providerSessionId: supportsProviderSessionResume(cliProvider)
-        ? normalizeProviderSessionId(
-            options.providerSessionId ?? session.providerSessionId
-          )
+        ? normalizeProviderSessionId(options.providerSessionId)
         : undefined,
       promptMode,
       attachment,
@@ -1368,7 +1329,6 @@ export class TmuxOrchestratorService {
       resolveQueuedJobProviderSession({
         cliProvider,
         jobId: job.jobId,
-        sessionProviderSessionId: session.providerSessionId,
         requestedProviderSessionId: options.providerSessionId,
       });
     console.log(

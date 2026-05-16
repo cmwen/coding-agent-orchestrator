@@ -460,7 +460,6 @@ describe("OrchestratorPane", () => {
       cliProvider: "copilot",
       model: "claude-sonnet-4.6",
       selectedCustomAgentId: null,
-      providerSessionId: null,
       executionMode: "standard",
     });
     expect(settingsPanel?.getAttribute("aria-hidden")).toBe("true");
@@ -674,7 +673,6 @@ describe("OrchestratorPane", () => {
       cliProvider: "copilot",
       model: "gpt-5",
       selectedCustomAgentId: "reviewer",
-      providerSessionId: null,
       executionMode: "standard",
     });
   });
@@ -902,7 +900,6 @@ describe("OrchestratorPane", () => {
       cliProvider: "copilot",
       model: "gpt-5",
       selectedCustomAgentId: null,
-      providerSessionId: null,
       executionMode: "fleet",
     });
   });
@@ -1005,7 +1002,6 @@ describe("OrchestratorPane", () => {
       cliProvider: "copilot",
       model: "gpt-5",
       selectedCustomAgentId: null,
-      providerSessionId: null,
       executionMode: "auto",
     });
   });
