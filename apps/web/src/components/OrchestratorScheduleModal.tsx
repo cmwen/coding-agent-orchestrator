@@ -42,9 +42,7 @@ const DAYS_OF_WEEK: Array<{
   { value: "sunday", label: "Sunday" },
 ];
 
-export function OrchestratorScheduleForm(
-  props: OrchestratorScheduleFormProps
-) {
+export function OrchestratorScheduleForm(props: OrchestratorScheduleFormProps) {
   const [title, setTitle] = useState(props.schedule?.title ?? "");
   const [prompt, setPrompt] = useState(props.schedule?.prompt ?? "");
   const [frequency, setFrequency] = useState<OrchestratorScheduleFrequency>(
@@ -329,4 +327,3 @@ export function OrchestratorScheduleForm(
 function getDefaultTimeZone() {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
-
