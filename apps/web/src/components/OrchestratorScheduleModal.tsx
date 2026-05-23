@@ -4,8 +4,7 @@ import type {
   OrchestratorScheduleDayOfWeek,
   OrchestratorScheduleFrequency,
 } from "@coding-agent-orchestrator/shared";
-import { useEffect, useMemo, useState } from "react";
-import { Modal } from "./Modal";
+import { useMemo, useState } from "react";
 
 export interface OrchestratorScheduleDraft {
   title: string;
@@ -20,14 +19,13 @@ export interface OrchestratorScheduleDraft {
   enabled: boolean;
 }
 
-interface OrchestratorScheduleModalProps {
-  open: boolean;
+interface OrchestratorScheduleFormProps {
   pending: boolean;
   schedule?: OrchestratorSchedule;
   availableCustomAgents: CopilotCustomAgent[];
   emailDeliveryAvailable: boolean;
   emailFromAddress?: string;
-  onClose: () => void;
+  onCancel: () => void;
   onSave: (draft: OrchestratorScheduleDraft) => void;
 }
 
@@ -44,50 +42,31 @@ const DAYS_OF_WEEK: Array<{
   { value: "sunday", label: "Sunday" },
 ];
 
-export function OrchestratorScheduleModal(
-  props: OrchestratorScheduleModalProps
+export function OrchestratorScheduleForm(
+  props: OrchestratorScheduleFormProps
 ) {
-  const [title, setTitle] = useState("");
-  const [prompt, setPrompt] = useState("");
-  const [frequency, setFrequency] =
-    useState<OrchestratorScheduleFrequency>("daily");
-  const [timeOfDay, setTimeOfDay] = useState("08:00");
-  const [timezone, setTimezone] = useState(getDefaultTimeZone);
-  const [dayOfWeek, setDayOfWeek] =
-    useState<OrchestratorScheduleDayOfWeek>("monday");
-  const [dayOfMonth, setDayOfMonth] = useState("1");
-  const [customAgentId, setCustomAgentId] = useState("");
-  const [emailTo, setEmailTo] = useState("");
-  const [enabled, setEnabled] = useState(true);
-
-  useEffect(() => {
-    if (!props.open) {
-      return;
-    }
-    if (props.schedule) {
-      setTitle(props.schedule.title);
-      setPrompt(props.schedule.prompt);
-      setFrequency(props.schedule.frequency);
-      setTimeOfDay(props.schedule.timeOfDay);
-      setTimezone(props.schedule.timezone);
-      setDayOfWeek(props.schedule.dayOfWeek ?? "monday");
-      setDayOfMonth(String(props.schedule.dayOfMonth ?? 1));
-      setCustomAgentId(props.schedule.customAgentId ?? "");
-      setEmailTo(props.schedule.emailTo ?? "");
-      setEnabled(props.schedule.enabled);
-      return;
-    }
-    setTitle("");
-    setPrompt("");
-    setFrequency("daily");
-    setTimeOfDay("08:00");
-    setTimezone(getDefaultTimeZone());
-    setDayOfWeek("monday");
-    setDayOfMonth("1");
-    setCustomAgentId("");
-    setEmailTo("");
-    setEnabled(true);
-  }, [props.open, props.schedule]);
+  const [title, setTitle] = useState(props.schedule?.title ?? "");
+  const [prompt, setPrompt] = useState(props.schedule?.prompt ?? "");
+  const [frequency, setFrequency] = useState<OrchestratorScheduleFrequency>(
+    props.schedule?.frequency ?? "daily"
+  );
+  const [timeOfDay, setTimeOfDay] = useState(
+    props.schedule?.timeOfDay ?? "08:00"
+  );
+  const [timezone, setTimezone] = useState(
+    props.schedule?.timezone ?? getDefaultTimeZone()
+  );
+  const [dayOfWeek, setDayOfWeek] = useState<OrchestratorScheduleDayOfWeek>(
+    props.schedule?.dayOfWeek ?? "monday"
+  );
+  const [dayOfMonth, setDayOfMonth] = useState(
+    String(props.schedule?.dayOfMonth ?? 1)
+  );
+  const [customAgentId, setCustomAgentId] = useState(
+    props.schedule?.customAgentId ?? ""
+  );
+  const [emailTo, setEmailTo] = useState(props.schedule?.emailTo ?? "");
+  const [enabled, setEnabled] = useState(props.schedule?.enabled ?? true);
 
   const canSave = useMemo(() => {
     if (props.pending) {
@@ -123,17 +102,23 @@ export function OrchestratorScheduleModal(
   ]);
 
   return (
-    <Modal
-      open={props.open}
-      title={
-        props.schedule
-          ? "Edit recurring task schedule"
-          : "Create recurring task schedule"
-      }
-      description="Automate a Copilot task for this orchestrator session, then optionally email the output when it finishes."
-      className="schedule-modal"
-      onClose={props.onClose}
-    >
+    <div className="orchestrator-schedule-form">
+      <div className="orchestrator-job-stack-header">
+        <div className="orchestrator-job-stack-toggle-copy">
+          <span className="eyebrow">
+            {props.schedule ? "Edit schedule" : "New schedule"}
+          </span>
+          <strong>
+            {props.schedule
+              ? "Edit recurring task schedule"
+              : "Create recurring task schedule"}
+          </strong>
+          <p className="panel-caption">
+            Automate a Copilot task for this orchestrator session, then
+            optionally email the output when it finishes.
+          </p>
+        </div>
+      </div>
       <div className="settings-grid">
         <section className="settings-card">
           <div>
@@ -147,7 +132,6 @@ export function OrchestratorScheduleModal(
           <label className="field-group">
             <span>Schedule title</span>
             <input
-              data-autofocus="true"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder="E.g. Daily XYZ news summary"
@@ -253,7 +237,7 @@ export function OrchestratorScheduleModal(
               spellCheck={false}
             />
             <small className="field-note">
-              Defaults to the browser timezone so “every morning” lines up with
+              Defaults to the browser timezone so "every morning" lines up with
               what you expect.
             </small>
           </label>
@@ -303,8 +287,8 @@ export function OrchestratorScheduleModal(
         </section>
       </div>
 
-      <div className="modal-footer">
-        <button type="button" className="ghost-button" onClick={props.onClose}>
+      <div className="composer-footer">
+        <button type="button" className="ghost-button" onClick={props.onCancel}>
           Cancel
         </button>
         <button
@@ -338,10 +322,11 @@ export function OrchestratorScheduleModal(
               : "Create schedule"}
         </button>
       </div>
-    </Modal>
+    </div>
   );
 }
 
 function getDefaultTimeZone() {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
+

@@ -19,7 +19,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: "prompt",
+      registerType: "autoUpdate",
       includeAssets: ["favicon.svg"],
       manifest: {
         name: "coding-agent-orchestrator",
@@ -42,6 +42,7 @@ export default defineConfig({
       workbox: {
         cleanupOutdatedCaches: true,
         clientsClaim: true,
+        skipWaiting: true,
         globPatterns: ["**/*.{js,css,html,svg,png,ico,webmanifest}"],
         navigateFallback: `${base}index.html`,
         runtimeCaching: [

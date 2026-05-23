@@ -17,15 +17,21 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
 const SELECTED_SESSION_KEY = "coding-agent-orchestrator:selected-session";
+const ORCHESTRATOR_TERMINAL_HEIGHT_KEY =
+  "coding-agent-orchestrator:orchestrator-terminal-height";
 
 vi.mock("./components/OrchestratorPane", () => ({
   OrchestratorPane: ({
     session,
+    terminalOutputHeight,
+    onTerminalOutputHeightChange,
     onDeleteSession,
     onSessionMissing,
     onSessionUpdate,
   }: {
     session?: { sessionId: string };
+    terminalOutputHeight?: number;
+    onTerminalOutputHeightChange?: (height: number) => void;
     onDeleteSession?: () => void;
     onSessionMissing?: (sessionId: string) => void;
     onSessionUpdate?: (session: OrchestratorSession) => void;
@@ -34,11 +40,17 @@ vi.mock("./components/OrchestratorPane", () => ({
       <div data-testid="orchestrator-pane-mode">
         {session ? `existing:${session.sessionId}` : "new-session"}
       </div>
+      <div data-testid="orchestrator-terminal-height">
+        {terminalOutputHeight ?? "missing"}
+      </div>
       {session ? (
         <button type="button" onClick={onDeleteSession}>
           Delete session
         </button>
       ) : null}
+      <button type="button" onClick={() => onTerminalOutputHeightChange?.(444)}>
+        Resize terminal
+      </button>
       <button type="button" onClick={() => onSessionMissing?.("session-1")}>
         Missing session
       </button>
@@ -334,5 +346,24 @@ describe("App", () => {
     expect(
       screen.getByRole("button", { name: /Existing session/i })
     ).toBeTruthy();
+  });
+
+  it("loads and persists orchestrator terminal height preferences", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(ORCHESTRATOR_TERMINAL_HEIGHT_KEY, "420");
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("orchestrator-terminal-height").textContent
+      ).toBe("420")
+    );
+
+    await user.click(screen.getByRole("button", { name: "Resize terminal" }));
+
+    await waitFor(() =>
+      expect(localStorage.getItem(ORCHESTRATOR_TERMINAL_HEIGHT_KEY)).toBe("444")
+    );
   });
 });

@@ -37,7 +37,7 @@ import { OrchestratorChangesPanel } from "./OrchestratorChangesPanel";
 import { OrchestratorDiffModal } from "./OrchestratorDiffModal";
 import {
   type OrchestratorScheduleDraft,
-  OrchestratorScheduleModal,
+  OrchestratorScheduleForm,
 } from "./OrchestratorScheduleModal";
 import { SingleAttachmentPicker } from "./SingleAttachmentPicker";
 
@@ -372,8 +372,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
   const [activeWorkspaceView, setActiveWorkspaceView] = useState<WorkspaceView>(
     () => preferredInitialWorkspaceView()
   );
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [scheduleFormVisible, setScheduleFormVisible] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<
     OrchestratorSchedule | undefined
   >();
@@ -395,7 +394,6 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
   const [workingTreeError, setWorkingTreeError] = useState<
     string | undefined
   >();
-  const [changesPanelOpen, setChangesPanelOpen] = useState(false);
   const [selectedChangePath, setSelectedChangePath] = useState<
     string | undefined
   >();
@@ -684,12 +682,11 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
     setTerminalStartOffset(getTerminalTailStartOffset(props.session));
     setLoadingMoreOutput(false);
     setTerminalHistoryError(undefined);
-    setScheduleModalOpen(false);
+    setScheduleFormVisible(false);
     setEditingSchedule(undefined);
     setWorkingTree(undefined);
     setWorkingTreeLoading(false);
     setWorkingTreeError(undefined);
-    setChangesPanelOpen(false);
     setSelectedChangePath(undefined);
     setSelectedChangeDiff(undefined);
     setSelectedChangeDiffLoading(false);
@@ -705,7 +702,6 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
       setSessionModelId(props.defaultModelId);
       setSessionCustomAgentId("");
       setExecutionMode("standard");
-      setSettingsOpen(false);
       return;
     }
     setSessionTitle(props.session.title);
@@ -739,18 +735,6 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
   }, [props.session?.terminalTail, props.session?.logSize]);
 
   useEffect(() => {
-    if (settingsOpen) {
-      setActiveWorkspaceView("settings");
-    }
-  }, [settingsOpen]);
-
-  useEffect(() => {
-    if (changesPanelOpen) {
-      setActiveWorkspaceView("changes");
-    }
-  }, [changesPanelOpen]);
-
-  useEffect(() => {
     const terminal = terminalRef.current;
     if (!terminal) {
       return;
@@ -765,6 +749,20 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
     scrollBehaviorRef.current = "bottom";
     scrollSnapshotRef.current = null;
   }, [terminalOutput]);
+
+  useEffect(() => {
+    if (activeWorkspaceView !== "terminal") {
+      return;
+    }
+    scrollBehaviorRef.current = "bottom";
+    window.requestAnimationFrame(() => {
+      const terminal = terminalRef.current;
+      if (!terminal) {
+        return;
+      }
+      terminal.scrollTop = terminal.scrollHeight;
+    });
+  }, [activeWorkspaceView]);
 
   useEffect(() => {
     sessionUpdateRef.current = props.onSessionUpdate;
@@ -986,7 +984,6 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
     setSelectedChangeDiff(undefined);
     setSelectedChangeDiffLoading(true);
     setSelectedChangeDiffError(undefined);
-    setChangesPanelOpen(false);
     setDiffModalOpen(true);
 
     try {
@@ -1143,8 +1140,6 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
 
   function handleSelectWorkspaceView(view: WorkspaceView) {
     setActiveWorkspaceView(view);
-    setSettingsOpen(view === "settings");
-    setChangesPanelOpen(view === "changes");
   }
 
   function handleSendFrequentTerminalCommand() {
@@ -1161,13 +1156,13 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
   function handleOpenCreateSchedule() {
     setActiveWorkspaceView("schedules");
     setEditingSchedule(undefined);
-    setScheduleModalOpen(true);
+    setScheduleFormVisible(true);
   }
 
   function handleEditSchedule(schedule: OrchestratorSchedule) {
     setActiveWorkspaceView("schedules");
     setEditingSchedule(schedule);
-    setScheduleModalOpen(true);
+    setScheduleFormVisible(true);
   }
 
   function handleSaveSchedule(draft: OrchestratorScheduleDraft) {
@@ -1202,7 +1197,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
         enabled: draft.enabled,
       });
     }
-    setScheduleModalOpen(false);
+    setScheduleFormVisible(false);
     setEditingSchedule(undefined);
   }
 
@@ -1581,28 +1576,24 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
               <button
                 type="button"
                 className={
-                  changesPanelOpen
+                  activeWorkspaceView === "changes"
                     ? "toolbar-chip orchestrator-changes-trigger open"
                     : "toolbar-chip orchestrator-changes-trigger"
                 }
-                aria-expanded={changesPanelOpen}
                 aria-controls={changesPanelId}
-                aria-haspopup="dialog"
                 onClick={() => handleSelectWorkspaceView("changes")}
               >
                 <span className="orchestrator-changes-trigger-topline">
                   <span className="toolbar-chip-label">Local changes</span>
                   <span className="orchestrator-changes-trigger-badge">
-                    {workingTree?.state === "dirty"
-                      ? visibleWorkingTreeFiles.length
-                      : 0}
+                    {dirtyFileCount}
                   </span>
                 </span>
                 <strong>
                   {workingTreeLoading
                     ? "Loading changes…"
                     : workingTree?.state === "dirty"
-                      ? `${visibleWorkingTreeFiles.length} changed`
+                      ? `${dirtyFileCount} changed`
                       : workingTree?.state === "clean"
                         ? "Working tree clean"
                         : "Change details"}
@@ -1615,32 +1606,30 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                       : "Open for repository status.")}
                 </small>
               </button>
-              <OrchestratorChangesPanel
-                open={changesPanelOpen}
-                panelId={changesPanelId}
-                workingTree={workingTree}
-                loading={workingTreeLoading}
-                error={workingTreeError}
-                selectedPath={selectedChangePath}
-                onClose={() => setChangesPanelOpen(false)}
-                onSelectFile={(file) => void handleSelectChangedFile(file)}
-              />
             </div>
             <button
               type="button"
               className="ghost-button"
-              aria-label={settingsOpen ? "Hide settings" : "Session settings"}
-              aria-expanded={settingsOpen}
+              aria-label={
+                activeWorkspaceView === "settings"
+                  ? "Hide settings"
+                  : "Session settings"
+              }
+              aria-expanded={activeWorkspaceView === "settings"}
               aria-controls={settingsPanelId}
               onClick={() =>
                 handleSelectWorkspaceView(
-                  settingsOpen ? "delegate" : "settings"
+                  activeWorkspaceView === "settings" ? "delegate" : "settings"
                 )
               }
             >
               <ButtonContent
                 icon={<SettingsIcon />}
-                label={settingsOpen ? "Hide settings" : "Session settings"}
+                label={
+                  activeWorkspaceView === "settings"
+                    ? "Hide settings"
+                    : "Session settings"
+                }
                 compactLabel="Settings"
               />
             </button>
@@ -1720,9 +1709,9 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
               activeWorkspaceView === "settings" ? "is-active" : ""
             }`}
             data-mobile-visible={activeWorkspaceView === "settings"}
-            data-state={settingsOpen ? "open" : "closed"}
-            aria-hidden={!settingsOpen}
-            hidden={activeWorkspaceView !== "settings" || !settingsOpen}
+            data-state={activeWorkspaceView === "settings" ? "open" : "closed"}
+            aria-hidden={activeWorkspaceView !== "settings"}
+            hidden={activeWorkspaceView !== "settings"}
           >
             <div className="collapsible-region-inner orchestrator-settings-panel">
               <div className="eyebrow">Session settings</div>
@@ -1878,7 +1867,6 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                   aria-label="Save details"
                   disabled={!canSaveSessionDetails}
                   onClick={() => {
-                    setSettingsOpen(false);
                     setActiveWorkspaceView("delegate");
                     props.onUpdateSession({
                       title: sessionTitle.trim(),
@@ -1920,47 +1908,20 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
           </div>
         </div>
         <div
-          className={`settings-card orchestrator-changes-summary orchestrator-workspace-panel orchestrator-board-card orchestrator-board-card-changes ${
+          id={changesPanelId}
+          className={`settings-card orchestrator-changes-panel-workspace orchestrator-workspace-panel orchestrator-board-card orchestrator-board-card-changes ${
             activeWorkspaceView === "changes" ? "is-active" : ""
           }`}
           data-mobile-visible={activeWorkspaceView === "changes"}
           hidden={activeWorkspaceView !== "changes"}
         >
-          <div className="orchestrator-job-stack-header">
-            <div className="orchestrator-job-stack-toggle-copy">
-              <span className="eyebrow">Changes workspace</span>
-              <strong>
-                Review the selected session working tree without leaving the
-                current runtime.
-              </strong>
-            </div>
-            <div className="orchestrator-job-stack-stats">
-              <span className="orchestrator-job-counter">
-                {workingTree?.state === "dirty"
-                  ? `${dirtyFileCount} changed`
-                  : workingTree?.state === "clean"
-                    ? "Working tree clean"
-                    : workingTreeLoading
-                      ? "Loading"
-                      : "Status pending"}
-              </span>
-              <button
-                type="button"
-                className="ghost-button"
-                data-workspace-target="changes"
-                onClick={() => handleSelectWorkspaceView("changes")}
-              >
-                Open changes
-              </button>
-            </div>
-          </div>
-          <div className="panel-caption">
-            {workingTreeError ??
-              workingTree?.message ??
-              (selectedWorkingTreeFile
-                ? `Selected file ${selectedWorkingTreeFile.path}`
-                : "Open the changes panel to inspect files and diffs.")}
-          </div>
+          <OrchestratorChangesPanel
+            workingTree={workingTree}
+            loading={workingTreeLoading}
+            error={workingTreeError}
+            selectedPath={selectedChangePath}
+            onSelectFile={(file) => void handleSelectChangedFile(file)}
+          />
         </div>
 
         <div
@@ -2278,10 +2239,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
           className={`settings-card orchestrator-schedule-stack orchestrator-workspace-panel orchestrator-board-card orchestrator-board-card-schedules ${
             activeWorkspaceView === "schedules" ? "is-active" : ""
           }`}
-          data-mobile-visible={
-            activeWorkspaceView === "schedules" ||
-            activeWorkspaceView === "settings"
-          }
+          data-mobile-visible={activeWorkspaceView === "schedules"}
           hidden={activeWorkspaceView !== "schedules"}
         >
           <div className="orchestrator-job-stack-header">
@@ -2299,18 +2257,36 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
               <span className="orchestrator-job-counter">
                 {props.schedules.length - enabledScheduleCount} paused
               </span>
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={handleOpenCreateSchedule}
-                disabled={props.pending}
-              >
-                Create schedule
-              </button>
+              {!scheduleFormVisible && (
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={handleOpenCreateSchedule}
+                  disabled={props.pending}
+                >
+                  Create schedule
+                </button>
+              )}
             </div>
           </div>
           <div id={scheduleSectionId} className="orchestrator-job-stack-panel">
-            {props.schedules.length > 0 ? (
+            {scheduleFormVisible ? (
+              <OrchestratorScheduleForm
+                key={editingSchedule?.scheduleId ?? "new"}
+                pending={props.pending}
+                schedule={editingSchedule}
+                availableCustomAgents={props.session.availableCustomAgents}
+                emailDeliveryAvailable={
+                  !!props.capabilities?.emailDeliveryAvailable
+                }
+                emailFromAddress={props.capabilities?.emailFromAddress}
+                onCancel={() => {
+                  setScheduleFormVisible(false);
+                  setEditingSchedule(undefined);
+                }}
+                onSave={handleSaveSchedule}
+              />
+            ) : props.schedules.length > 0 ? (
               <div className="orchestrator-job-list">
                 {props.schedules.map((schedule) => (
                   <article
@@ -2789,20 +2765,6 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
           Settings
         </button>
       </nav>
-
-      <OrchestratorScheduleModal
-        open={scheduleModalOpen}
-        pending={props.pending}
-        schedule={editingSchedule}
-        availableCustomAgents={props.session.availableCustomAgents}
-        emailDeliveryAvailable={!!props.capabilities?.emailDeliveryAvailable}
-        emailFromAddress={props.capabilities?.emailFromAddress}
-        onClose={() => {
-          setScheduleModalOpen(false);
-          setEditingSchedule(undefined);
-        }}
-        onSave={handleSaveSchedule}
-      />
     </section>
   );
 }
