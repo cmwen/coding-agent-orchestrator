@@ -112,6 +112,10 @@ body,
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   min-height: 100%;
@@ -1507,6 +1511,11 @@ p {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  max-height: min(60dvh, 44rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.2rem;
+  scrollbar-gutter: stable;
 }
 
 .orchestrator-working-tree-file {
@@ -1727,7 +1736,7 @@ p {
 
 .orchestrator-control-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .orchestrator-settings-panel {
@@ -1835,6 +1844,11 @@ p {
 
 .orchestrator-board-card {
   min-width: 0;
+}
+
+.orchestrator-changes-panel-workspace .orchestrator-changes-panel {
+  width: 100%;
+  max-width: none;
 }
 
 .orchestrator-board-card-changes {
@@ -2089,7 +2103,7 @@ p {
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
-  max-height: min(15rem, 34vh);
+  max-height: min(60dvh, 44rem);
   overflow: auto;
   overscroll-behavior: contain;
   padding-right: 0.2rem;
@@ -3098,7 +3112,10 @@ p {
   height: 100dvh;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
+  grid-template-columns: var(--orchestrator-sidebar-width, 340px) 12px minmax(
+      0,
+      1fr
+    );
   overflow: hidden;
   background: var(--page-bg-end);
   color: var(--text-primary);
@@ -3115,6 +3132,36 @@ p {
   gap: 16px;
   overflow-y: auto;
   scrollbar-gutter: stable;
+}
+
+.orchestrator-sidebar-resize-handle {
+  display: block;
+  position: relative;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: col-resize;
+  height: 100%;
+  min-height: 0;
+  align-self: stretch;
+}
+
+.orchestrator-sidebar-resize-handle::before {
+  content: "";
+  position: absolute;
+  top: 1rem;
+  bottom: 1rem;
+  left: 50%;
+  width: 2px;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  background: var(--border-soft);
+  transition: background 120ms ease;
+}
+
+.orchestrator-sidebar-resize-handle:hover::before,
+.orchestrator-sidebar-resize-handle:focus-visible::before {
+  background: var(--focus-ring);
 }
 
 .orchestrator-sidebar-hero {
@@ -3452,6 +3499,10 @@ p {
     width: 100%;
   }
 
+  .orchestrator-sidebar-resize-handle {
+    display: none;
+  }
+
   .orchestrator-sidebar {
     min-height: auto;
     border-right: 0;
@@ -3468,8 +3519,6 @@ p {
     border-radius: 18px;
   }
 
-  .orchestrator-sidebar-overview,
-  .orchestrator-sidebar-meta,
   .orchestrator-active-session-card {
     display: none;
   }
@@ -3529,7 +3578,7 @@ p {
   }
 
   .orchestrator-main {
-    padding: 12px 12px calc(88px + env(safe-area-inset-bottom));
+    padding: 12px 12px calc(110px + env(safe-area-inset-bottom));
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
@@ -3571,14 +3620,16 @@ p {
   }
 
   .orchestrator-mobile-nav {
-    position: sticky;
+    position: fixed;
+    left: 0;
+    right: 0;
     bottom: 0;
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 0.5rem;
-    z-index: 6;
-    margin-top: 0.25rem;
-    padding: 0.85rem 0 calc(0.35rem + env(safe-area-inset-bottom));
+    z-index: 30;
+    margin-top: 0;
+    padding: 0.85rem 0.75rem calc(0.35rem + env(safe-area-inset-bottom));
     border-top: 1px solid
       color-mix(in srgb, var(--border-soft) 85%, transparent);
     background: linear-gradient(

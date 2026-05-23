@@ -10,7 +10,9 @@ import type {
   WorkspaceSummary,
 } from "@coding-agent-orchestrator/shared";
 import {
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   useEffect,
   useMemo,
   useRef,
@@ -22,9 +24,20 @@ import type { CommandPaletteItem } from "./command-palette";
 import { CommandPalette } from "./components/CommandPalette";
 import { DangerConfirmModal } from "./components/DangerConfirmModal";
 import { OrchestratorPane } from "./components/OrchestratorPane";
+import {
+  clampOrchestratorTerminalHeight,
+  DEFAULT_ORCHESTRATOR_TERMINAL_HEIGHT,
+} from "./ui-preferences";
 
 const DEFAULT_MODEL_ID = "gpt-5-mini";
 const SELECTED_SESSION_KEY = "coding-agent-orchestrator:selected-session";
+const ORCHESTRATOR_TERMINAL_HEIGHT_KEY =
+  "coding-agent-orchestrator:orchestrator-terminal-height";
+const ORCHESTRATOR_SIDEBAR_WIDTH_KEY =
+  "coding-agent-orchestrator:orchestrator-sidebar-width";
+const DEFAULT_ORCHESTRATOR_SIDEBAR_WIDTH = 340;
+const MIN_ORCHESTRATOR_SIDEBAR_WIDTH = 280;
+const MAX_ORCHESTRATOR_SIDEBAR_WIDTH = 520;
 
 const CLI_MODELS: ModelDescriptor[] = [
   {
@@ -246,6 +259,20 @@ export default function App() {
     if (saved === "light") return "light";
     return "dark";
   });
+  const [orchestratorTerminalHeight, setOrchestratorTerminalHeight] = useState(
+    () => readStoredOrchestratorTerminalHeight()
+  );
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const stored = localStorage.getItem(ORCHESTRATOR_SIDEBAR_WIDTH_KEY);
+    if (!stored) return DEFAULT_ORCHESTRATOR_SIDEBAR_WIDTH;
+    const parsed = Number.parseInt(stored, 10);
+    return Number.isFinite(parsed)
+      ? Math.min(
+          MAX_ORCHESTRATOR_SIDEBAR_WIDTH,
+          Math.max(MIN_ORCHESTRATOR_SIDEBAR_WIDTH, parsed)
+        )
+      : DEFAULT_ORCHESTRATOR_SIDEBAR_WIDTH;
+  });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -290,30 +317,12 @@ export default function App() {
       ),
     [selectedSession?.sessionId, sessions, theme]
   );
-  const runningSessionCount = useMemo(
-    () =>
-      standardSessions.filter((session) => session.status === "running").length,
-    [standardSessions]
-  );
   const activePeerSessionCount = useMemo(
     () =>
       standardSessions.filter(
         (session) => session.status === "running" || !!session.activeJobId
       ).length,
     [standardSessions]
-  );
-  const queuedTaskCount = useMemo(
-    () =>
-      sessions.reduce(
-        (count, session) =>
-          count + session.jobs.filter((job) => job.status === "queued").length,
-        0
-      ),
-    [sessions]
-  );
-  const activeScheduleCount = useMemo(
-    () => schedules.filter((schedule) => schedule.enabled).length,
-    [schedules]
   );
   useEffect(() => {
     void refreshAll();
@@ -361,6 +370,20 @@ export default function App() {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("coding-agent-orchestrator:theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      ORCHESTRATOR_TERMINAL_HEIGHT_KEY,
+      orchestratorTerminalHeight.toString()
+    );
+  }, [orchestratorTerminalHeight]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      ORCHESTRATOR_SIDEBAR_WIDTH_KEY,
+      sidebarWidth.toString()
+    );
+  }, [sidebarWidth]);
 
   async function refreshAll() {
     setPending(true);
@@ -580,18 +603,55 @@ export default function App() {
     handleCloseRemoveSessionModal();
   }
 
+  function handleSidebarResizePointerDown(
+    event: ReactPointerEvent<HTMLButtonElement>
+  ) {
+    event.preventDefault();
+    const element = event.currentTarget;
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+    element.setPointerCapture(event.pointerId);
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      setSidebarWidth(
+        Math.min(
+          MAX_ORCHESTRATOR_SIDEBAR_WIDTH,
+          Math.max(
+            MIN_ORCHESTRATOR_SIDEBAR_WIDTH,
+            Math.round(startWidth + moveEvent.clientX - startX)
+          )
+        )
+      );
+    };
+    const handlePointerFinish = (finishEvent: PointerEvent) => {
+      element.removeEventListener("pointermove", handlePointerMove);
+      element.removeEventListener("pointerup", handlePointerFinish);
+      element.removeEventListener("pointercancel", handlePointerFinish);
+      if (element.hasPointerCapture(finishEvent.pointerId)) {
+        element.releasePointerCapture(finishEvent.pointerId);
+      }
+    };
+
+    element.addEventListener("pointermove", handlePointerMove);
+    element.addEventListener("pointerup", handlePointerFinish);
+    element.addEventListener("pointercancel", handlePointerFinish);
+  }
+
   return (
-    <main className="orchestrator-app-shell">
+    <main
+      className="orchestrator-app-shell"
+      style={
+        { "--orchestrator-sidebar-width": `${sidebarWidth}px` } as CSSProperties
+      }
+    >
       <aside className="orchestrator-sidebar" aria-label="Sessions">
         <div className="orchestrator-sidebar-hero">
           <div className="orchestrator-brand">
             <div>
-              <div className="eyebrow">Design 03 Command Center</div>
+              <div className="eyebrow">
+                One place for all coding agent sessions
+              </div>
               <h1>Coding Agent CLI Orchestrator</h1>
-              <p className="orchestrator-brand-copy">
-                Queue work, watch tmux output, and manage schedules from one
-                responsive operations board.
-              </p>
             </div>
             <div className="orchestrator-brand-actions">
               <button
@@ -625,36 +685,6 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="orchestrator-sidebar-overview">
-            <div className="orchestrator-sidebar-overview-card">
-              <span className="panel-caption">Sessions</span>
-              <strong>{sessions.length}</strong>
-              <small>{runningSessionCount} running now</small>
-            </div>
-            <div className="orchestrator-sidebar-overview-card">
-              <span className="panel-caption">Queued tasks</span>
-              <strong>{queuedTaskCount}</strong>
-              <small>Across every session</small>
-            </div>
-            <div className="orchestrator-sidebar-overview-card">
-              <span className="panel-caption">Schedules</span>
-              <strong>{activeScheduleCount}</strong>
-              <small>Active automations</small>
-            </div>
-          </div>
-        </div>
-        <div className="orchestrator-sidebar-meta">
-          <span>
-            {capabilities?.tmuxInstalled ? "tmux ready" : "tmux missing"}
-          </span>
-          <span>
-            {selectedSession
-              ? `${selectedSession.jobs.length} job${
-                  selectedSession.jobs.length === 1 ? "" : "s"
-                } in active session`
-              : "No active session selected"}
-          </span>
-          <span>{workspace?.storeRoot ?? "Loading store"}</span>
         </div>
         {selectedSession ? (
           <section className="orchestrator-active-session-card">
@@ -673,33 +703,6 @@ export default function App() {
                   : selectedSession.status}
               </span>
             </div>
-            <p className="orchestrator-active-session-copy">
-              {selectedSession.projectPurpose}
-            </p>
-            <dl className="orchestrator-active-session-details">
-              <div>
-                <dt>Project</dt>
-                <dd>{selectedSession.projectPath}</dd>
-              </div>
-              <div>
-                <dt>Runtime</dt>
-                <dd>
-                  {selectedSession.cliProvider} · {selectedSession.model}
-                </dd>
-              </div>
-              <div>
-                <dt>Queue</dt>
-                <dd>
-                  {selectedSession.jobs.filter((job) => job.status === "queued")
-                    .length || 0}{" "}
-                  waiting
-                </dd>
-              </div>
-              <div>
-                <dt>Updated</dt>
-                <dd>{new Date(selectedSession.updatedAt).toLocaleString()}</dd>
-              </div>
-            </dl>
             <div className="orchestrator-active-session-actions">
               <button
                 type="button"
@@ -725,10 +728,6 @@ export default function App() {
           <section className="orchestrator-active-session-card is-empty">
             <div className="eyebrow">Active session</div>
             <strong>No session selected</strong>
-            <p className="orchestrator-active-session-copy">
-              Create a new orchestrator session to start the queue board and
-              terminal runtime.
-            </p>
           </section>
         )}
         <div className="orchestrator-sidebar-section">
@@ -755,9 +754,6 @@ export default function App() {
             </span>
             <small>
               Create a fresh orchestrator session and queue the first task.
-            </small>
-            <small className="orchestrator-session-link-meta">
-              Pick a project path, runtime, and initial task.
             </small>
           </button>
           {!masterSession ? (
@@ -788,10 +784,6 @@ export default function App() {
                 <span className="scope-chip">Control</span>
               </span>
               <small>Bootstrap the pinned cross-session control plane.</small>
-              <small className="orchestrator-session-link-meta">
-                Creates the single allowed master session and writes
-                master-context.md.
-              </small>
             </button>
           ) : null}
         </div>
@@ -835,13 +827,6 @@ export default function App() {
                   <small className="orchestrator-session-link-purpose">
                     {masterSession.projectPurpose}
                   </small>
-                  <small className="orchestrator-session-link-meta">
-                    Control plane · {masterSession.cliProvider} ·{" "}
-                    {masterSession.model}
-                  </small>
-                  <small className="orchestrator-session-link-meta">
-                    Updated {new Date(masterSession.updatedAt).toLocaleString()}
-                  </small>
                 </button>
               </div>
             </div>
@@ -881,23 +866,24 @@ export default function App() {
                 <small className="orchestrator-session-link-purpose">
                   {session.projectPurpose}
                 </small>
-                <small>
+                <small className="orchestrator-session-link-meta">
                   Updated {new Date(session.updatedAt).toLocaleString()}
-                </small>
-                <small className="orchestrator-session-link-meta">
-                  {session.cliProvider} · {session.model} ·{" "}
-                  {executionModeLabel(session.executionMode)}
-                </small>
-                <small className="orchestrator-session-link-meta">
-                  {session.providerSessionId
-                    ? `Coding agent session ID ${session.providerSessionId}`
-                    : "Starts fresh by default"}
                 </small>
               </button>
             </div>
           ))}
         </div>
       </aside>
+      <button
+        type="button"
+        className="orchestrator-sidebar-resize-handle"
+        aria-label="Resize sidebar"
+        title="Drag to resize sidebar. Double-click to reset."
+        onDoubleClick={() =>
+          setSidebarWidth(DEFAULT_ORCHESTRATOR_SIDEBAR_WIDTH)
+        }
+        onPointerDown={handleSidebarResizePointerDown}
+      />
 
       <section className="orchestrator-main" aria-label="Orchestrator">
         <OrchestratorPane
@@ -1041,6 +1027,12 @@ export default function App() {
               ? () => handleOpenRemoveSessionModal(selectedSession)
               : undefined
           }
+          terminalOutputHeight={orchestratorTerminalHeight}
+          onTerminalOutputHeightChange={(height) =>
+            setOrchestratorTerminalHeight(
+              clampOrchestratorTerminalHeight(height)
+            )
+          }
           onSessionUpdate={applyExistingSessionUpdate}
           onSessionMissing={handleMissingSession}
         />
@@ -1078,20 +1070,20 @@ export default function App() {
   );
 }
 
-function executionModeLabel(
-  mode?: OrchestratorSession["executionMode"]
-): string {
-  if (mode === "fleet") {
-    return "Fleet";
-  }
-  if (mode === "auto") {
-    return "Auto";
-  }
-  return "Standard";
-}
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unexpected runtime error.";
+}
+
+function readStoredOrchestratorTerminalHeight(): number {
+  const storedValue = localStorage.getItem(ORCHESTRATOR_TERMINAL_HEIGHT_KEY);
+  if (!storedValue) {
+    return DEFAULT_ORCHESTRATOR_TERMINAL_HEIGHT;
+  }
+  const parsed = Number.parseInt(storedValue, 10);
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_ORCHESTRATOR_TERMINAL_HEIGHT;
+  }
+  return clampOrchestratorTerminalHeight(parsed);
 }
 
 function activateWorkspaceTarget(
