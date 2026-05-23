@@ -385,6 +385,11 @@ export type OrchestratorExecutionMode = z.infer<
   typeof orchestratorExecutionModeSchema
 >;
 
+export const orchestratorSessionRoleSchema = z.enum(["standard", "master"]);
+export type OrchestratorSessionRole = z.infer<
+  typeof orchestratorSessionRoleSchema
+>;
+
 export const orchestratorWorkingTreeStateSchema = z.enum([
   "clean",
   "dirty",
@@ -522,10 +527,67 @@ export const copilotCustomAgentSchema = z.object({
 });
 export type CopilotCustomAgent = z.infer<typeof copilotCustomAgentSchema>;
 
+export const masterBatchConfidenceSchema = z.enum(["high", "medium", "low"]);
+export type MasterBatchConfidence = z.infer<typeof masterBatchConfidenceSchema>;
+
+export const masterBatchApprovalSchema = z.enum([
+  "pending",
+  "approved",
+  "edited",
+  "skipped",
+]);
+export type MasterBatchApproval = z.infer<typeof masterBatchApprovalSchema>;
+
+export const masterBatchItemStatusSchema = z.enum([
+  "pending",
+  "queued",
+  "running",
+  "completed",
+  "failed",
+  "skipped",
+]);
+export type MasterBatchItemStatus = z.infer<typeof masterBatchItemStatusSchema>;
+
+export const masterBatchStatusSchema = z.enum([
+  "planning",
+  "awaiting-approval",
+  "dispatched",
+  "done",
+  "cancelled",
+]);
+export type MasterBatchStatus = z.infer<typeof masterBatchStatusSchema>;
+
+export const masterBatchItemSchema = z.object({
+  itemId: z.string().min(1),
+  sessionId: z.string().min(1),
+  sessionTitle: z.string().min(1).optional(),
+  jobId: z.string().min(1).optional(),
+  prompt: z.string().min(1),
+  confidence: masterBatchConfidenceSchema,
+  reason: z.string().min(1),
+  approval: masterBatchApprovalSchema,
+  editedPrompt: z.string().min(1).optional(),
+  status: masterBatchItemStatusSchema,
+});
+export type MasterBatchItem = z.infer<typeof masterBatchItemSchema>;
+
+export const masterBatchSchema = z.object({
+  batchId: z.string().min(1),
+  createdAt: z.string().min(1),
+  completedAt: z.string().min(1).optional(),
+  status: masterBatchStatusSchema,
+  originalPrompt: z.string().min(1),
+  attachmentId: z.string().min(1).optional(),
+  items: z.array(masterBatchItemSchema).default([]),
+});
+export type MasterBatch = z.infer<typeof masterBatchSchema>;
+
 export const orchestratorJobSchema = z.object({
   jobId: z.string().min(1),
   sessionId: z.string().min(1),
   scheduleId: z.string().min(1).optional(),
+  masterBatchId: z.string().min(1).optional(),
+  masterItemId: z.string().min(1).optional(),
   providerSessionId: z.string().min(1).optional(),
   prompt: z.string().optional(),
   promptPreview: z.string().min(1),
@@ -547,6 +609,7 @@ export type OrchestratorJob = z.infer<typeof orchestratorJobSchema>;
 export const orchestratorSessionSummarySchema = z.object({
   sessionId: z.string().min(1),
   agentId: z.string().min(1),
+  role: orchestratorSessionRoleSchema.optional(),
   title: z.string().min(1),
   startedAt: z.string().min(1),
   updatedAt: z.string().min(1),
@@ -591,6 +654,7 @@ export const orchestratorCapabilitiesSchema = z.object({
   geminiInstalled: z.boolean().optional(),
   codexInstalled: z.boolean().optional(),
   opencodeInstalled: z.boolean().optional(),
+  antigravityInstalled: z.boolean().optional(),
   defaultCliProvider: z.string().min(1).optional(),
   cliProviders: z.array(orchestratorCliProviderDescriptorSchema).optional(),
   tmuxSessionName: z.string().min(1),
@@ -845,6 +909,7 @@ export const orchestratorSessionCreateSchema = z.object({
   title: z.string().min(1).optional(),
   projectPath: z.string().min(1),
   projectPurpose: z.string().min(1),
+  role: orchestratorSessionRoleSchema.optional(),
   cliProvider: z.string().min(1).optional(),
   model: z.string().min(1).default(DEFAULT_CHAT_MODEL),
   selectedCustomAgentId: z.string().trim().min(1).nullable().optional(),
@@ -886,6 +951,36 @@ export const orchestratorDelegateRequestSchema = z.object({
 export type OrchestratorDelegateRequest = z.infer<
   typeof orchestratorDelegateRequestSchema
 >;
+
+export const masterBatchCreateSchema = z.object({
+  status: masterBatchStatusSchema.default("planning"),
+  originalPrompt: z.string().min(1),
+  attachmentId: z.string().min(1).optional(),
+  items: z
+    .array(
+      masterBatchItemSchema
+        .omit({
+          itemId: true,
+          approval: true,
+          status: true,
+        })
+        .extend({
+          approval: masterBatchApprovalSchema.optional(),
+          status: masterBatchItemStatusSchema.optional(),
+        })
+    )
+    .default([]),
+});
+export type MasterBatchCreateRequest = z.infer<typeof masterBatchCreateSchema>;
+
+export const masterBatchUpdateSchema = z.object({
+  completedAt: z.string().min(1).optional(),
+  status: masterBatchStatusSchema.optional(),
+  originalPrompt: z.string().min(1).optional(),
+  attachmentId: z.string().min(1).nullable().optional(),
+  items: z.array(masterBatchItemSchema).optional(),
+});
+export type MasterBatchUpdateRequest = z.infer<typeof masterBatchUpdateSchema>;
 
 export const orchestratorTerminalInputSchema = z.object({
   input: z.string(),

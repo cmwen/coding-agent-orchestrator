@@ -1,0 +1,48 @@
+{
+  "color": {
+    "brand": {
+      "primary": "#3B82F6",
+      "secondary": "#0EA5E9",
+      "accent": "#7C3AED"
+    },
+    "status": {
+      "success": "#22C55E",
+      "warning": "#F59E0B",
+      "danger": "#EF4444",
+      "info": "#60A5FA"
+    },
+    "surface": {
+      "dark": {
+        "bg": "#101828",
+        "panel": "#0F172A",
+        "card": "#1E293B",
+        "text": "#E5ECF6",
+        "muted": "#94A3B8"
+      },
+      "light": {
+        "bg": "#F4F7FB",
+        "panel": "#FFFFFF",
+        "card": "#F8FAFC",
+        "text": "#0F172A",
+        "muted": "#475569"
+      }
+    }
+  },
+  "spacing": { "xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24, "2xl": 32 },
+  "radius": { "sm": 8, "md": 12, "lg": 16, "pill": 999 },
+  "type": {
+    "family": "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif",
+    "size": {
+      "caption": 12,
+      "body": 14,
+      "bodyLg": 16,
+      "title": 20,
+      "hero": 28
+    },
+    "weight": { "regular": 400, "medium": 500, "semibold": 600, "bold": 700 }
+  },
+  "elevation": {
+    "soft": "0 10px 24px rgba(2, 6, 23, 0.16)",
+    "strong": "0 18px 48px rgba(2, 6, 23, 0.32)"
+  }
+}

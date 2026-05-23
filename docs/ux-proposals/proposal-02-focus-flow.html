@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Design 02 - Focus Flow Workspace</title>
+    <style>
+      body { margin: 0; font-family: Inter, "Segoe UI", system-ui, sans-serif; background: #f3f6fb; color: #0f1b33; }
+      .wrap { max-width: 1080px; margin: 0 auto; padding: 24px 20px 40px; }
+      .card { border: 1px solid #d6dfef; background: #fff; border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+      h1, h2, h3 { margin: 0 0 10px; }
+      p, li { color: #4a5f86; }
+      .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+      .step { border: 1px solid #cfdbf7; border-radius: 10px; padding: 10px; background: #f8fbff; }
+      .tokens { display: flex; flex-wrap: wrap; gap: 8px; }
+      .token { background: #edf4ff; border: 1px solid #cfe0ff; color: #204a8f; padding: 5px 9px; border-radius: 999px; font-size: 12px; }
+      a { color: #1f59c5; text-decoration: none; }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Design 02: Focus Flow Workspace</h1>
+      <p>
+        A calm, guided flow that reduces cognitive load by separating context
+        setup, execution, and review as explicit steps.
+      </p>
+
+      <section class="card">
+        <h2>Design Goals</h2>
+        <ul>
+          <li>Turn one long operations page into predictable "flow lanes".</li>
+          <li>Make default state obvious: what should user do next?</li>
+          <li>Improve readability on both dark and light themes.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Primary Journey</h2>
+        <div class="steps">
+          <article class="step"><strong>1. Context</strong><br />Session title, provider, model, purpose, resume ID.</article>
+          <article class="step"><strong>2. Execute</strong><br />Prompt + attachment composer, delegate action, active run state.</article>
+          <article class="step"><strong>3. Observe</strong><br />Terminal stream + queue timeline with retry/continue affordances.</article>
+          <article class="step"><strong>4. Maintain</strong><br />Schedules + local changes + session settings/danger zone.</article>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Component Delta from Current App</h2>
+        <ul>
+          <li>Convert queue list to timeline cards with prominent timestamps.</li>
+          <li>Move schedule creation into a side-sheet with progressive fields.</li>
+          <li>Collapse low-frequency controls (raw terminal input, session delete) behind "Advanced".</li>
+          <li>Add a sticky "Next recommended action" helper row based on session state.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Icon System (new)</h2>
+        <div class="tokens">
+          <span class="token">ic-flow-context</span>
+          <span class="token">ic-flow-execute</span>
+          <span class="token">ic-flow-observe</span>
+          <span class="token">ic-flow-maintain</span>
+          <span class="token">ic-prompt-compose</span>
+          <span class="token">ic-stream-wave</span>
+          <span class="token">ic-continue-thread</span>
+          <span class="token">ic-advanced-tools</span>
+        </div>
+        <p>SVG symbols: <a href="./icons-02-focus-flow.svg">icons-02-focus-flow.svg</a></p>
+      </section>
+    </main>
+  </body>
+</html>

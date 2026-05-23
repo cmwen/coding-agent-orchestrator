@@ -89,6 +89,44 @@ type WorkspaceView =
 
 const TERMINAL_HISTORY_PAGE_LINE_LIMIT = 2_000;
 const INITIAL_TERMINAL_TAIL_LINE_LIMIT = 200;
+type FrequentTerminalCommand = {
+  id: string;
+  label: string;
+  input: string;
+  submit: boolean;
+};
+const FREQUENT_TERMINAL_COMMANDS: FrequentTerminalCommand[] = [
+  {
+    id: "git-add",
+    label: "Git add",
+    input: "git add .",
+    submit: true,
+  },
+  {
+    id: "git-commit-update",
+    label: "Git ci -m update",
+    input: 'git commit -m "update"',
+    submit: true,
+  },
+  {
+    id: "git-push",
+    label: "Git push",
+    input: "git push",
+    submit: true,
+  },
+  {
+    id: "ctrl-c",
+    label: "Ctrl c",
+    input: "\u0003",
+    submit: false,
+  },
+  {
+    id: "esc",
+    label: "Esc",
+    input: "\u001b",
+    submit: false,
+  },
+];
 type AnsiComponentProps = {
   children?: string;
   linkify?: boolean | "fuzzy";
@@ -130,7 +168,8 @@ function supportsProviderSessionResume(cliProvider?: string): boolean {
     cliProvider === "copilot" ||
     cliProvider === "gemini" ||
     cliProvider === "codex" ||
-    cliProvider === "opencode"
+    cliProvider === "opencode" ||
+    cliProvider === "antigravity"
   );
 }
 
@@ -152,7 +191,36 @@ function providerSessionFieldNote(
   if (cliProvider === "opencode") {
     return "Paste an existing OpenCode coding agent session ID to continue it on delegated jobs.";
   }
+  if (cliProvider === "antigravity") {
+    return "Paste an existing Google Antigravity conversation ID to continue that conversation on delegated jobs.";
+  }
   return "Optional coding agent session ID for future delegated jobs.";
+}
+
+function delegatePromptPlaceholder(
+  session: OrchestratorSession,
+  activeJob?: OrchestratorJob
+): string {
+  const cliProvider = session.cliProvider ?? "copilot";
+  if (activeJob) {
+    return "Add the next task. It will wait for the current run to finish.";
+  }
+  if (cliProvider === "copilot") {
+    return "Queue another async prompt for the Copilot CLI window.";
+  }
+  if (cliProvider === "gemini") {
+    return "Queue another async prompt for the Gemini CLI window.";
+  }
+  if (cliProvider === "codex") {
+    return "Queue another async prompt for the Codex CLI window.";
+  }
+  if (cliProvider === "opencode") {
+    return "Queue another async prompt for the OpenCode CLI window.";
+  }
+  if (cliProvider === "antigravity") {
+    return "Queue another async prompt for the Google Antigravity CLI window.";
+  }
+  return "Queue another async prompt for the selected CLI window.";
 }
 
 function buildDelegationCommandHint(
@@ -172,6 +240,9 @@ function buildDelegationCommandHint(
   }
   if (cliProvider === "opencode") {
     return `opencode run --model ${session.model}${effectiveProviderSessionId ? ` --session ${effectiveProviderSessionId}` : ""} -p ...`;
+  }
+  if (cliProvider === "antigravity") {
+    return `agy${effectiveProviderSessionId ? ` --conversation ${effectiveProviderSessionId}` : ""} -p ...`;
   }
   const sessionFlag = effectiveProviderSessionId
     ? ` --resume ${effectiveProviderSessionId}`
@@ -281,6 +352,10 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
     File | undefined
   >();
   const [terminalInput, setTerminalInput] = useState("");
+  const [
+    selectedFrequentTerminalCommandId,
+    setSelectedFrequentTerminalCommandId,
+  ] = useState("");
   const [sessionTitle, setSessionTitle] = useState(props.session?.title ?? "");
   const [sessionCliProvider, setSessionCliProvider] = useState(
     props.session?.cliProvider ?? defaultCliProvider
@@ -469,6 +544,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
   const enabledScheduleCount = props.schedules.filter(
     (schedule) => schedule.enabled
   ).length;
+  const isCompactWorkspace = preferredInitialWorkspaceView() === "queue";
   const delegateButtonLabel = activeJob
     ? "Queue next prompt"
     : "Delegate prompt";
@@ -481,6 +557,9 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
     { id: "schedules", label: "Schedules" },
     { id: "settings", label: "Settings" },
   ];
+  const queuePanelId = props.session
+    ? `${props.session.sessionId}-task-queue`
+    : "orchestrator-task-queue";
   const scheduleSectionId = props.session
     ? `${props.session.sessionId}-schedules`
     : "orchestrator-schedules";
@@ -505,7 +584,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
     { label: "Failed", status: "failed", items: failedJobs },
     { label: "Completed", status: "completed", items: completedJobsBoard },
   ];
-  const mobileHomeSessions = useMemo(
+  const mobileQueueSessions = useMemo(
     () => (props.allSessions ?? []).slice(0, 6),
     [props.allSessions]
   );
@@ -599,6 +678,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
     setDelegateProviderSessionId("");
     setDelegateAttachment(undefined);
     setTerminalInput("");
+    setSelectedFrequentTerminalCommandId("");
     scrollBehaviorRef.current = "bottom";
     setTerminalOutput(props.session?.terminalTail ?? "");
     setTerminalStartOffset(getTerminalTailStartOffset(props.session));
@@ -1012,15 +1092,17 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
       props.capabilities.geminiInstalled && "gemini",
       props.capabilities.codexInstalled && "codex",
       props.capabilities.opencodeInstalled && "opencode",
+      props.capabilities.antigravityInstalled && "antigravity",
     ].filter(Boolean);
     if (installedCLIs.length === 0) {
-      return "No supported CLI tools (copilot, gemini, codex, or opencode) are available on this machine.";
+      return "No supported CLI tools (copilot, gemini, codex, opencode, or antigravity) are available on this machine.";
     }
     const missingCLIs = [
       !props.capabilities.copilotInstalled && "copilot",
       !props.capabilities.geminiInstalled && "gemini",
       !props.capabilities.codexInstalled && "codex",
       !props.capabilities.opencodeInstalled && "opencode",
+      !props.capabilities.antigravityInstalled && "antigravity",
     ].filter(Boolean);
     if (missingCLIs.length === 1) {
       return `The \`${missingCLIs[0]}\` CLI is not available on this machine.`;
@@ -1051,11 +1133,29 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
   const terminalOutputStyle = {
     "--terminal-output-height": `${props.terminalOutputHeight ?? DEFAULT_ORCHESTRATOR_TERMINAL_HEIGHT}px`,
   } as CSSProperties;
+  const selectedFrequentTerminalCommand = useMemo(
+    () =>
+      FREQUENT_TERMINAL_COMMANDS.find(
+        (command) => command.id === selectedFrequentTerminalCommandId
+      ),
+    [selectedFrequentTerminalCommandId]
+  );
 
   function handleSelectWorkspaceView(view: WorkspaceView) {
     setActiveWorkspaceView(view);
     setSettingsOpen(view === "settings");
     setChangesPanelOpen(view === "changes");
+  }
+
+  function handleSendFrequentTerminalCommand() {
+    if (!selectedFrequentTerminalCommand) {
+      return;
+    }
+    props.onSendInput(
+      selectedFrequentTerminalCommand.input,
+      selectedFrequentTerminalCommand.submit
+    );
+    setSelectedFrequentTerminalCommandId("");
   }
 
   function handleOpenCreateSchedule() {
@@ -1134,8 +1234,8 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
             <div className="eyebrow">Async delegation</div>
             <h3>Create an orchestrator session</h3>
             <p>
-              Queue work into a tmux window that runs Copilot or Gemini with
-              your chosen model, then monitor the terminal output here.
+              Queue work into a tmux window that runs a supported CLI provider
+              with your chosen model, then monitor the terminal output here.
             </p>
           </div>
           <div className="field-note">{capabilityMessage}</div>
@@ -1442,6 +1542,39 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
             <div className="orchestrator-session-path">
               <code>{props.session.projectPath}</code>
             </div>
+            <div className="orchestrator-session-meta">
+              <span>
+                Provider:{" "}
+                {selectedSavedSessionCliProvider?.displayName ??
+                  props.session.cliProvider}
+              </span>
+              <span>
+                Model:{" "}
+                {selectedSavedSessionModel?.displayName ?? props.session.model}
+              </span>
+              {latestKnownProviderSession ? (
+                <span>
+                  {`Latest coding agent session ID: ${latestKnownProviderSession.providerSessionId}`}
+                </span>
+              ) : null}
+              {savedProviderSessionId &&
+              latestKnownProviderSession?.providerSessionId !==
+                savedProviderSessionId ? (
+                <span>
+                  {`Saved default coding agent session ID: ${savedProviderSessionId}`}
+                </span>
+              ) : null}
+              <span>
+                {props.session.jobs.length} delegated job
+                {props.session.jobs.length === 1 ? "" : "s"}
+              </span>
+              {queuedJobs.length > 0 ? (
+                <span>
+                  {queuedJobs.length} queued task
+                  {queuedJobs.length === 1 ? "" : "s"}
+                </span>
+              ) : null}
+            </div>
           </div>
           <div className="orchestrator-session-actions" aria-live="polite">
             <div className="runtime-control orchestrator-changes-control">
@@ -1526,6 +1659,17 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                 />
               </button>
             ) : null}
+            {props.onDeleteSession ? (
+              <button
+                type="button"
+                className="ghost-button danger-button"
+                aria-label={`Open delete dialog for ${props.session.title}`}
+                disabled={props.pending}
+                onClick={props.onDeleteSession}
+              >
+                Delete session
+              </button>
+            ) : null}
           </div>
         </div>
         <OrchestratorDiffModal
@@ -1540,21 +1684,34 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
           className="orchestrator-workspace-nav"
           aria-label="Workspace views"
         >
-          {workspaceViews.map((view) => (
-            <button
-              key={view.id}
-              type="button"
-              className={
-                activeWorkspaceView === view.id
-                  ? "workspace-tab is-active"
-                  : "workspace-tab"
-              }
-              data-workspace-target={view.id}
-              onClick={() => handleSelectWorkspaceView(view.id)}
-            >
-              {view.label}
-            </button>
-          ))}
+          {workspaceViews.map((view) => {
+            const isActive = activeWorkspaceView === view.id;
+            const isQueueView = view.id === "queue";
+            return (
+              <button
+                key={view.id}
+                type="button"
+                className={
+                  isActive ? "workspace-tab is-active" : "workspace-tab"
+                }
+                data-workspace-target={view.id}
+                aria-label={
+                  isQueueView && isActive && !isCompactWorkspace
+                    ? "Hide task queue"
+                    : undefined
+                }
+                aria-controls={isQueueView ? queuePanelId : undefined}
+                aria-expanded={isQueueView ? isActive : undefined}
+                onClick={() =>
+                  isQueueView && isActive && !isCompactWorkspace
+                    ? handleSelectWorkspaceView("delegate")
+                    : handleSelectWorkspaceView(view.id)
+                }
+              >
+                {view.label}
+              </button>
+            );
+          })}
         </nav>
         <div className="orchestrator-workspace-board">
           <div
@@ -1807,10 +1964,12 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
         </div>
 
         <div
+          id={queuePanelId}
           className={`settings-card orchestrator-job-stack orchestrator-workspace-panel orchestrator-board-card orchestrator-board-card-queue ${
             activeWorkspaceView === "queue" ? "is-active" : ""
           }`}
           data-mobile-visible={activeWorkspaceView === "queue"}
+          aria-hidden={activeWorkspaceView !== "queue"}
           hidden={activeWorkspaceView !== "queue"}
         >
           <div className="orchestrator-job-stack-header">
@@ -1838,17 +1997,17 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
             </div>
           </div>
           <div className="orchestrator-mobile-queue-board">
-            <section className="orchestrator-mobile-home-hub">
-              <div className="orchestrator-mobile-home-primary">
+            <section className="orchestrator-mobile-queue-overview">
+              <div className="orchestrator-mobile-queue-summary">
                 <div className="orchestrator-mobile-queue-board-header">
                   <div>
-                    <span className="eyebrow">Home</span>
+                    <span className="eyebrow">Queue</span>
                     <strong>{props.session.title}</strong>
                   </div>
                   <span className="scope-chip">{props.session.status}</span>
                 </div>
                 <p className="panel-caption">{props.session.projectPurpose}</p>
-                <div className="orchestrator-mobile-home-meta">
+                <div className="orchestrator-mobile-queue-meta">
                   <span>{props.session.projectPath}</span>
                   <span>
                     {selectedSavedSessionCliProvider?.displayName ??
@@ -1867,7 +2026,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                       : "Starts fresh by default"}
                   </span>
                 </div>
-                <div className="orchestrator-mobile-home-actions">
+                <div className="orchestrator-mobile-queue-actions">
                   <button
                     type="button"
                     className="ghost-button"
@@ -1908,7 +2067,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                   ) : null}
                 </div>
                 <div className="orchestrator-mobile-session-switcher-list">
-                  {mobileHomeSessions.map((session) => (
+                  {mobileQueueSessions.map((session) => (
                     <button
                       key={session.sessionId}
                       type="button"
@@ -2026,6 +2185,14 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                           {humanizeJobStatus(job.status)}
                         </span>
                         <strong>{job.promptPreview}</strong>
+                        {job.masterBatchId ? (
+                          <span
+                            className="scope-chip orchestrator-master-origin-chip"
+                            title={`Master batch ${job.masterBatchId}${job.masterItemId ? ` · item ${job.masterItemId}` : ""}`}
+                          >
+                            Dispatched from master
+                          </span>
+                        ) : null}
                         {job.providerSessionId ? (
                           <span
                             className="panel-caption orchestrator-job-session-id"
@@ -2342,6 +2509,37 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
             </span>
           </div>
           <div className="settings-card">
+            <div className="terminal-frequent-command-row">
+              <label className="field-group grow">
+                <span>Frequent commands</span>
+                <select
+                  value={selectedFrequentTerminalCommandId}
+                  onChange={(event) =>
+                    setSelectedFrequentTerminalCommandId(event.target.value)
+                  }
+                >
+                  <option value="">Select a command</option>
+                  {FREQUENT_TERMINAL_COMMANDS.map((command) => (
+                    <option key={command.id} value={command.id}>
+                      {command.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="ghost-button"
+                aria-label="Send selected frequent command"
+                disabled={props.pending || !selectedFrequentTerminalCommand}
+                onClick={handleSendFrequentTerminalCommand}
+              >
+                <ButtonContent
+                  icon={<SendIcon />}
+                  label="Send command"
+                  compactLabel="Send"
+                />
+              </button>
+            </div>
             <label className="field-group grow">
               <span>Send raw terminal input</span>
               <textarea
@@ -2420,11 +2618,10 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                 value={delegatePrompt}
                 onChange={(event) => setDelegatePrompt(event.target.value)}
                 rows={5}
-                placeholder={
+                placeholder={delegatePromptPlaceholder(
+                  props.session,
                   activeJob
-                    ? "Add the next task. It will wait for the current run to finish."
-                    : "Queue another async prompt for the Copilot CLI window."
-                }
+                )}
               />
             </label>
             {supportsProviderSessionResume(props.session.cliProvider) ? (
@@ -2468,7 +2665,9 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                   <span>
                     {props.session.cliProvider === "copilot"
                       ? "Blank starts a fresh Copilot task session."
-                      : "Set a coding agent session ID to continue an existing conversation."}
+                      : props.session.cliProvider === "antigravity"
+                        ? "Blank starts a fresh Google Antigravity conversation."
+                        : "Set a coding agent session ID to continue an existing conversation."}
                   </span>
                 ) : null}
                 <span>
@@ -2524,8 +2723,10 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
           data-workspace-target="queue"
           onClick={() => handleSelectWorkspaceView("queue")}
         >
-          <span className="mobile-nav-icon">🏠</span>
-          Home
+          <span className="mobile-nav-icon" aria-hidden="true">
+            <QueueIcon />
+          </span>
+          Queue
         </button>
         <button
           type="button"
@@ -2537,7 +2738,9 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
           data-workspace-target="delegate"
           onClick={() => handleSelectWorkspaceView("delegate")}
         >
-          <span className="mobile-nav-icon">↗</span>
+          <span className="mobile-nav-icon" aria-hidden="true">
+            <DelegateIcon />
+          </span>
           Delegate
         </button>
         <button
@@ -2550,7 +2753,9 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
           data-workspace-target="terminal"
           onClick={() => handleSelectWorkspaceView("terminal")}
         >
-          <span className="mobile-nav-icon">&gt;_</span>
+          <span className="mobile-nav-icon" aria-hidden="true">
+            <TerminalIcon />
+          </span>
           Terminal
         </button>
         <button
@@ -2563,7 +2768,9 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
           data-workspace-target="changes"
           onClick={() => handleSelectWorkspaceView("changes")}
         >
-          <span className="mobile-nav-icon">◇</span>
+          <span className="mobile-nav-icon" aria-hidden="true">
+            <ChangesIcon />
+          </span>
           Changes
         </button>
         <button
@@ -2576,7 +2783,9 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
           data-workspace-target="settings"
           onClick={() => handleSelectWorkspaceView("settings")}
         >
-          <span className="mobile-nav-icon">⚙</span>
+          <span className="mobile-nav-icon" aria-hidden="true">
+            <SettingsIcon />
+          </span>
           Settings
         </button>
       </nav>
@@ -2820,6 +3029,39 @@ function SettingsIcon() {
       <path
         fill="currentColor"
         d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.32 7.32 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.58.23-1.13.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.48a.5.5 0 0 0 .12.64L4.86 10.7c-.05.31-.08.64-.08.97s.03.65.08.97l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.5.39 1.05.71 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.23 1.13-.55 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.02-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"
+      />
+    </svg>
+  );
+}
+
+function QueueIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v3A1.5 1.5 0 0 1 18.5 10h-13A1.5 1.5 0 0 1 4 8.5v-3Zm0 10A1.5 1.5 0 0 1 5.5 14h13a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-3Z"
+      />
+    </svg>
+  );
+}
+
+function TerminalIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm1.9 3.4L8.5 11l-2.6 2.6L7.3 15 11.3 11 7.3 7 5.9 8.4ZM12 15h6v-2h-6v2Z"
+      />
+    </svg>
+  );
+}
+
+function ChangesIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M7 3h10v2H7V3Zm0 6h10v2H7V9Zm0 6h6v2H7v-2Zm10.59-1.41L20 16l-5 5-3-3 1.41-1.41L15 18.17l3.59-3.58Z"
       />
     </svg>
   );

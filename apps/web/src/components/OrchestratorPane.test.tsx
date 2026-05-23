@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OrchestratorPane } from "./OrchestratorPane";
@@ -9,6 +15,17 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
+
+async function openDesktopWorkspaceView(
+  user: ReturnType<typeof userEvent.setup>,
+  view: "delegate" | "terminal" | "queue" | "changes" | "schedules" | "settings"
+) {
+  const button = document.querySelector<HTMLButtonElement>(
+    `.orchestrator-workspace-nav [data-workspace-target="${view}"]`
+  );
+  expect(button).toBeTruthy();
+  await user.click(button ?? document.body);
+}
 
 describe("OrchestratorPane", () => {
   it("submits a new orchestrator session request", async () => {
@@ -343,6 +360,76 @@ describe("OrchestratorPane", () => {
     ).toBe("copilot-session-123");
   });
 
+  it("shows Antigravity continuation hints when that provider is selected", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <OrchestratorPane
+        capabilities={{
+          available: true,
+          defaultProjectPath: "/tmp/project/",
+          recentProjectPaths: [],
+          tmuxInstalled: true,
+          copilotInstalled: false,
+          geminiInstalled: false,
+          codexInstalled: false,
+          opencodeInstalled: false,
+          antigravityInstalled: true,
+          defaultCliProvider: "antigravity",
+          cliProviders: [
+            {
+              id: "antigravity",
+              displayName: "Google Antigravity CLI",
+              description: "Uses the installed Antigravity CLI.",
+              capabilities: {
+                supportsCustomAgents: false,
+                supportsExecutionMode: false,
+              },
+            },
+          ],
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+        }}
+        models={[
+          {
+            id: "antigravity-lite",
+            displayName: "Antigravity Lite",
+            runtimeProvider: "antigravity",
+            supportedReasoningEfforts: [],
+          },
+        ]}
+        defaultModelId="antigravity-lite"
+        projectPathSuggestions={["/tmp/project"]}
+        pending={false}
+        onCreateSession={() => undefined}
+        onUpdateSession={() => undefined}
+        onDelegate={() => undefined}
+        onSendInput={() => undefined}
+        onCancelJob={() => undefined}
+        onRestartSession={() => undefined}
+        onDeleteQueuedJob={() => undefined}
+        schedules={[]}
+        onCreateSchedule={() => undefined}
+        onUpdateSchedule={() => undefined}
+        onDeleteSchedule={() => undefined}
+        onSessionUpdate={() => undefined}
+      />
+    );
+
+    await user.type(
+      screen.getByLabelText("Project purpose"),
+      "Repair the login redirect"
+    );
+
+    expect(
+      screen.getByText(
+        /Paste an existing Google Antigravity conversation ID to continue that conversation on delegated jobs\./i
+      )
+    ).toBeTruthy();
+    expect(
+      screen.getByPlaceholderText("Optional existing coding agent session ID")
+    ).toBeTruthy();
+  });
+
   it("lets users update the saved session title and model", async () => {
     const user = userEvent.setup();
     const onUpdateSession = vi.fn();
@@ -552,7 +639,11 @@ describe("OrchestratorPane", () => {
       />
     );
 
-    await user.click(screen.getByRole("button", { name: "Delete session" }));
+    await user.click(
+      screen.getByRole("button", {
+        name: "Open delete dialog for Repo support",
+      })
+    );
 
     expect(onDeleteSession).toHaveBeenCalledTimes(1);
   });
@@ -1273,12 +1364,13 @@ describe("OrchestratorPane", () => {
       />
     );
 
-    await user.click(screen.getByRole("button", { name: "Open task queue" }));
+    await openDesktopWorkspaceView(user, "queue");
     await user.click(
       screen.getByRole("button", {
         name: "Continue task: Implement the migration",
       })
     );
+    await openDesktopWorkspaceView(user, "delegate");
     expect(screen.getByDisplayValue("copilot-session-123")).toBeTruthy();
 
     await user.type(
@@ -1301,6 +1393,191 @@ describe("OrchestratorPane", () => {
         ) as HTMLInputElement
       ).value
     ).toBe("");
+  });
+
+  it("shows a mobile queue switcher and supports the new-session shortcut", async () => {
+    const user = userEvent.setup();
+    const onSelectSession = vi.fn();
+    class MockEventSource {
+      addEventListener = vi.fn();
+      removeEventListener = vi.fn();
+      close = vi.fn();
+      onerror: (() => void) | null = null;
+    }
+    vi.stubGlobal("EventSource", MockEventSource);
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn().mockImplementation((query: string) => ({
+        matches: query === "(max-width: 860px)",
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }))
+    );
+
+    render(
+      <OrchestratorPane
+        capabilities={{
+          available: true,
+          defaultProjectPath: "/tmp/project",
+          recentProjectPaths: ["/tmp/another-project"],
+          tmuxInstalled: true,
+          copilotInstalled: true,
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+          cliProviders: [
+            {
+              id: "copilot",
+              displayName: "GitHub Copilot CLI",
+              description: "Uses the installed copilot CLI.",
+              capabilities: {
+                supportsCustomAgents: true,
+                supportsExecutionMode: true,
+              },
+            },
+          ],
+        }}
+        session={{
+          sessionId: "2026-03-20-repo-support",
+          agentId: "copilot-orchestrator",
+          title: "Repo support",
+          startedAt: "2026-03-20T12:00:00Z",
+          updatedAt: "2026-03-20T12:05:00Z",
+          summary: "Handle runtime support work",
+          projectPath: "/tmp/project",
+          projectPurpose: "Handle runtime support work",
+          cliProvider: "copilot",
+          model: "gpt-5",
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+          tmuxWindowName: "project-repo-support-0001",
+          tmuxPaneId: "%42",
+          status: "running",
+          activeJobId: undefined,
+          lastJobId: undefined,
+          availableCustomAgents: [],
+          selectedCustomAgentId: undefined,
+          executionMode: "standard",
+          sessionDirectory: "/tmp/session",
+          manifestPath:
+            "agents/copilot-orchestrator/history/2026-03/2026-03-20-repo-support/SESSION.md",
+          jobs: [],
+          terminalTail: "",
+          logSize: 0,
+        }}
+        allSessions={[
+          {
+            sessionId: "2026-03-20-repo-support",
+            agentId: "copilot-orchestrator",
+            title: "Repo support",
+            startedAt: "2026-03-20T12:00:00Z",
+            updatedAt: "2026-03-20T12:05:00Z",
+            summary: "Handle runtime support work",
+            projectPath: "/tmp/project",
+            projectPurpose: "Handle runtime support work",
+            cliProvider: "copilot",
+            model: "gpt-5",
+            tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+            tmuxWindowName: "project-repo-support-0001",
+            tmuxPaneId: "%42",
+            status: "running",
+            activeJobId: undefined,
+            lastJobId: undefined,
+            availableCustomAgents: [],
+            selectedCustomAgentId: undefined,
+            executionMode: "standard",
+            sessionDirectory: "/tmp/session",
+            manifestPath:
+              "agents/copilot-orchestrator/history/2026-03/2026-03-20-repo-support/SESSION.md",
+            jobs: [],
+            terminalTail: "",
+            logSize: 0,
+          },
+          {
+            sessionId: "docs-cleanup",
+            agentId: "copilot-orchestrator",
+            title: "Docs cleanup",
+            startedAt: "2026-03-19T12:00:00Z",
+            updatedAt: "2026-03-19T12:05:00Z",
+            summary: "Clean up docs",
+            projectPath: "/tmp/docs",
+            projectPurpose: "Clean up docs",
+            cliProvider: "copilot",
+            model: "gpt-5",
+            tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+            tmuxWindowName: "docs-cleanup",
+            tmuxPaneId: "%43",
+            status: "completed",
+            activeJobId: undefined,
+            lastJobId: undefined,
+            availableCustomAgents: [],
+            selectedCustomAgentId: undefined,
+            executionMode: "standard",
+            sessionDirectory: "/tmp/docs-session",
+            manifestPath:
+              "agents/copilot-orchestrator/history/2026-03/docs-cleanup/SESSION.md",
+            jobs: [],
+            terminalTail: "",
+            logSize: 0,
+          },
+        ]}
+        schedules={[]}
+        models={[
+          {
+            id: "gpt-5",
+            displayName: "GPT-5",
+            runtimeProvider: "copilot",
+            supportedReasoningEfforts: [],
+          },
+        ]}
+        defaultModelId="gpt-5"
+        projectPathSuggestions={["/tmp/project", "/tmp/docs"]}
+        pending={false}
+        onCreateSession={() => undefined}
+        onUpdateSession={() => undefined}
+        onSelectSession={onSelectSession}
+        onDelegate={() => undefined}
+        onSendInput={() => undefined}
+        onCancelJob={() => undefined}
+        onRestartSession={() => undefined}
+        onDeleteQueuedJob={() => undefined}
+        onCreateSchedule={() => undefined}
+        onUpdateSchedule={() => undefined}
+        onDeleteSchedule={() => undefined}
+        onSessionUpdate={() => undefined}
+      />
+    );
+
+    const desktopNav = screen.getByRole("navigation", {
+      name: "Workspace views",
+    });
+    expect(
+      within(desktopNav).getByRole("button", { name: "Queue" })
+    ).toBeTruthy();
+
+    const mobileNav = screen.getByRole("navigation", {
+      name: "Mobile workspace views",
+    });
+    expect(
+      within(mobileNav).getByRole("button", { name: "Queue" })
+    ).toBeTruthy();
+    expect(
+      within(mobileNav).queryByRole("button", { name: "Home" })
+    ).toBeNull();
+    expect(screen.getByText("Switch session")).toBeTruthy();
+    const sessionSwitcher = screen
+      .getByText("Switch session")
+      .closest(".orchestrator-mobile-session-switcher");
+    expect(sessionSwitcher).toBeTruthy();
+    const switcher = within(sessionSwitcher as HTMLElement);
+
+    await user.click(switcher.getByRole("button", { name: "New" }));
+    expect(onSelectSession).toHaveBeenCalledWith(undefined);
+
+    await user.click(switcher.getByRole("button", { name: /Docs cleanup/ }));
+    expect(onSelectSession).toHaveBeenCalledWith("docs-cleanup");
   });
 
   it("creates a recurring schedule from the orchestrator session view", async () => {
@@ -1377,6 +1654,7 @@ describe("OrchestratorPane", () => {
       />
     );
 
+    await openDesktopWorkspaceView(user, "schedules");
     await user.click(screen.getByRole("button", { name: "Create schedule" }));
     await user.type(
       screen.getByLabelText("Schedule title"),
@@ -1679,6 +1957,7 @@ describe("OrchestratorPane", () => {
       />
     );
 
+    await openDesktopWorkspaceView(user, "terminal");
     expect(
       screen.getByRole("button", { name: "Load 2k more lines" })
     ).toBeTruthy();
@@ -1702,7 +1981,7 @@ describe("OrchestratorPane", () => {
     ).toBeNull();
   });
 
-  it("keeps the task queue collapsed until users open it", async () => {
+  it("opens the task queue when users switch to the queue view", async () => {
     const user = userEvent.setup();
     class MockEventSource {
       addEventListener = vi.fn();
@@ -1803,30 +2082,528 @@ describe("OrchestratorPane", () => {
     );
 
     expect(screen.getByText("2 queued tasks")).toBeTruthy();
-    const queueToggle = screen.getByRole("button", { name: "Open task queue" });
+    expect(
+      screen.queryByRole("button", { name: "Open task queue" })
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Hide task queue" })
+    ).toBeNull();
+
+    await openDesktopWorkspaceView(user, "queue");
+
+    const queueToggle = screen.getByRole("button", { name: "Hide task queue" });
     expect(queueToggle).toBeTruthy();
     expect(
       screen.getByText("Current run plus any queued follow-up work")
     ).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Queue next prompt" })
-    ).toBeTruthy();
+      screen.queryByRole("button", { name: "Queue next prompt" })
+    ).toBeNull();
     const queuePanelId = queueToggle.getAttribute("aria-controls");
     expect(queuePanelId).toBeTruthy();
     const queuePanel = queuePanelId
       ? document.getElementById(queuePanelId)
       : undefined;
-    expect(queuePanel?.getAttribute("aria-hidden")).toBe("true");
+    expect(queuePanel?.getAttribute("aria-hidden")).toBe("false");
+    expect(queuePanel).toBeTruthy();
+    const queuePanelContent = within(queuePanel as HTMLElement);
+    expect(
+      queuePanelContent.getByText("Investigate the stuck deploy")
+    ).toBeTruthy();
+    expect(
+      queuePanelContent.getByText("Update the rollout checklist")
+    ).toBeTruthy();
+    expect(
+      queuePanelContent.getByText("Draft the release note update")
+    ).toBeTruthy();
+  });
 
-    await user.click(queueToggle);
+  it("shows terminal and queue as separate workspace views on desktop", async () => {
+    const user = userEvent.setup();
+    class MockEventSource {
+      addEventListener = vi.fn();
+      removeEventListener = vi.fn();
+      close = vi.fn();
+      onerror: (() => void) | null = null;
+    }
+    vi.stubGlobal("EventSource", MockEventSource);
+
+    render(
+      <OrchestratorPane
+        capabilities={{
+          available: true,
+          defaultProjectPath: "/tmp/project",
+          recentProjectPaths: ["/tmp/another-project"],
+          tmuxInstalled: true,
+          copilotInstalled: true,
+          defaultCliProvider: "copilot",
+          cliProviders: [
+            {
+              id: "copilot",
+              displayName: "GitHub Copilot CLI",
+              description: "Uses the installed copilot CLI.",
+              capabilities: {
+                supportsCustomAgents: true,
+                supportsExecutionMode: true,
+              },
+            },
+          ],
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+        }}
+        session={{
+          sessionId: "2026-03-20-repo-support",
+          agentId: "copilot-orchestrator",
+          title: "Repo support",
+          startedAt: "2026-03-20T12:00:00Z",
+          updatedAt: "2026-03-20T12:05:00Z",
+          summary: "Handle runtime support work",
+          projectPath: "/tmp/project",
+          projectPurpose: "Handle runtime support work",
+          cliProvider: "copilot",
+          model: "gpt-5",
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+          tmuxWindowName: "project-repo-support-0001",
+          tmuxPaneId: "%42",
+          status: "running",
+          activeJobId: "job-1",
+          lastJobId: "job-2",
+          availableCustomAgents: [],
+          selectedCustomAgentId: undefined,
+          sessionDirectory: "/tmp/session",
+          manifestPath:
+            "agents/copilot-orchestrator/history/2026-03/2026-03-20-repo-support/SESSION.md",
+          jobs: [
+            {
+              jobId: "job-2",
+              sessionId: "2026-03-20-repo-support",
+              promptPreview: "Update the rollout checklist",
+              promptMode: "inline",
+              status: "queued",
+              submittedAt: "2026-03-20T12:03:30Z",
+              jobDirectory: "/tmp/session/delegations/job-2",
+            },
+            {
+              jobId: "job-1",
+              sessionId: "2026-03-20-repo-support",
+              promptPreview: "Investigate the stuck deploy",
+              promptMode: "inline",
+              status: "running",
+              submittedAt: "2026-03-20T12:03:00Z",
+              startedAt: "2026-03-20T12:03:05Z",
+              jobDirectory: "/tmp/session/delegations/job-1",
+            },
+          ],
+          terminalTail: "",
+          logSize: 0,
+        }}
+        models={[
+          {
+            id: "gpt-5",
+            displayName: "GPT-5",
+            runtimeProvider: "copilot",
+            supportedReasoningEfforts: [],
+          },
+        ]}
+        defaultModelId="gpt-5"
+        projectPathSuggestions={["/tmp/project", "/tmp/another-project"]}
+        pending={false}
+        onCreateSession={() => undefined}
+        onUpdateSession={() => undefined}
+        onDelegate={() => undefined}
+        onSendInput={() => undefined}
+        onCancelJob={() => undefined}
+        onRestartSession={() => undefined}
+        onDeleteQueuedJob={() => undefined}
+        schedules={[]}
+        onCreateSchedule={() => undefined}
+        onUpdateSchedule={() => undefined}
+        onDeleteSchedule={() => undefined}
+        onSessionUpdate={() => undefined}
+      />
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Queue next prompt" })
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Start a new tmux session" })
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Open task queue" })
+    ).toBeNull();
+
+    await openDesktopWorkspaceView(user, "terminal");
+
+    expect(
+      screen.getByRole("button", { name: "Start a new tmux session" })
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Queue next prompt" })
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Open task queue" })
+    ).toBeNull();
+
+    await openDesktopWorkspaceView(user, "queue");
 
     expect(
       screen.getByRole("button", { name: "Hide task queue" })
     ).toBeTruthy();
-    expect(queuePanel?.getAttribute("aria-hidden")).toBe("false");
-    expect(screen.getByText("Investigate the stuck deploy")).toBeTruthy();
-    expect(screen.getByText("Update the rollout checklist")).toBeTruthy();
-    expect(screen.getByText("Draft the release note update")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Start a new tmux session" })
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Queue next prompt" })
+    ).toBeNull();
+  });
+
+  it("keeps raw terminal input inside the terminal workspace", async () => {
+    const user = userEvent.setup();
+    const onSendInput = vi.fn();
+    class MockEventSource {
+      addEventListener = vi.fn();
+      removeEventListener = vi.fn();
+      close = vi.fn();
+      onerror: (() => void) | null = null;
+    }
+    vi.stubGlobal("EventSource", MockEventSource);
+
+    render(
+      <OrchestratorPane
+        capabilities={{
+          available: true,
+          defaultProjectPath: "/tmp/project",
+          recentProjectPaths: [],
+          tmuxInstalled: true,
+          copilotInstalled: true,
+          defaultCliProvider: "copilot",
+          cliProviders: [
+            {
+              id: "copilot",
+              displayName: "GitHub Copilot CLI",
+              description: "Uses the installed copilot CLI.",
+              capabilities: {
+                supportsCustomAgents: true,
+                supportsExecutionMode: true,
+              },
+            },
+          ],
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+        }}
+        session={{
+          sessionId: "2026-03-20-repo-support",
+          agentId: "copilot-orchestrator",
+          title: "Repo support",
+          startedAt: "2026-03-20T12:00:00Z",
+          updatedAt: "2026-03-20T12:05:00Z",
+          summary: "Handle runtime support work",
+          projectPath: "/tmp/project",
+          projectPurpose: "Handle runtime support work",
+          cliProvider: "copilot",
+          model: "gpt-5",
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+          tmuxWindowName: "project-repo-support-0001",
+          tmuxPaneId: "%42",
+          status: "idle",
+          activeJobId: undefined,
+          lastJobId: undefined,
+          availableCustomAgents: [],
+          selectedCustomAgentId: undefined,
+          executionMode: "standard",
+          sessionDirectory: "/tmp/session",
+          manifestPath:
+            "agents/copilot-orchestrator/history/2026-03/2026-03-20-repo-support/SESSION.md",
+          jobs: [],
+          terminalTail: "",
+          logSize: 0,
+        }}
+        models={[
+          {
+            id: "gpt-5",
+            displayName: "GPT-5",
+            runtimeProvider: "copilot",
+            supportedReasoningEfforts: [],
+          },
+        ]}
+        defaultModelId="gpt-5"
+        projectPathSuggestions={["/tmp/project"]}
+        pending={false}
+        onCreateSession={() => undefined}
+        onUpdateSession={() => undefined}
+        onDelegate={() => undefined}
+        onSendInput={onSendInput}
+        onCancelJob={() => undefined}
+        onRestartSession={() => undefined}
+        onDeleteQueuedJob={() => undefined}
+        schedules={[]}
+        onCreateSchedule={() => undefined}
+        onUpdateSchedule={() => undefined}
+        onDeleteSchedule={() => undefined}
+        onSessionUpdate={() => undefined}
+      />
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Send and press Enter" })
+    ).toBeNull();
+
+    await openDesktopWorkspaceView(user, "terminal");
+    await user.type(
+      screen.getByPlaceholderText("Send text directly into the tmux pane."),
+      "pwd"
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Send and press Enter" })
+    );
+
+    expect(onSendInput).toHaveBeenCalledWith("pwd", true);
+
+    await openDesktopWorkspaceView(user, "delegate");
+    expect(
+      screen.queryByRole("button", { name: "Send and press Enter" })
+    ).toBeNull();
+  });
+
+  it("sends frequent terminal commands from the dropdown", async () => {
+    const user = userEvent.setup();
+    const onSendInput = vi.fn();
+    class MockEventSource {
+      addEventListener = vi.fn();
+      removeEventListener = vi.fn();
+      close = vi.fn();
+      onerror: (() => void) | null = null;
+    }
+    vi.stubGlobal("EventSource", MockEventSource);
+
+    render(
+      <OrchestratorPane
+        capabilities={{
+          available: true,
+          defaultProjectPath: "/tmp/project",
+          recentProjectPaths: [],
+          tmuxInstalled: true,
+          copilotInstalled: true,
+          defaultCliProvider: "copilot",
+          cliProviders: [
+            {
+              id: "copilot",
+              displayName: "GitHub Copilot CLI",
+              description: "Uses the installed copilot CLI.",
+              capabilities: {
+                supportsCustomAgents: true,
+                supportsExecutionMode: true,
+              },
+            },
+          ],
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+        }}
+        session={{
+          sessionId: "2026-03-20-repo-support",
+          agentId: "copilot-orchestrator",
+          title: "Repo support",
+          startedAt: "2026-03-20T12:00:00Z",
+          updatedAt: "2026-03-20T12:05:00Z",
+          summary: "Handle runtime support work",
+          projectPath: "/tmp/project",
+          projectPurpose: "Handle runtime support work",
+          cliProvider: "copilot",
+          model: "gpt-5",
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+          tmuxWindowName: "project-repo-support-0001",
+          tmuxPaneId: "%42",
+          status: "idle",
+          activeJobId: undefined,
+          lastJobId: undefined,
+          availableCustomAgents: [],
+          selectedCustomAgentId: undefined,
+          executionMode: "standard",
+          sessionDirectory: "/tmp/session",
+          manifestPath:
+            "agents/copilot-orchestrator/history/2026-03/2026-03-20-repo-support/SESSION.md",
+          jobs: [],
+          terminalTail: "",
+          logSize: 0,
+        }}
+        models={[
+          {
+            id: "gpt-5",
+            displayName: "GPT-5",
+            runtimeProvider: "copilot",
+            supportedReasoningEfforts: [],
+          },
+        ]}
+        defaultModelId="gpt-5"
+        projectPathSuggestions={["/tmp/project"]}
+        pending={false}
+        onCreateSession={() => undefined}
+        onUpdateSession={() => undefined}
+        onDelegate={() => undefined}
+        onSendInput={onSendInput}
+        onCancelJob={() => undefined}
+        onRestartSession={() => undefined}
+        onDeleteQueuedJob={() => undefined}
+        schedules={[]}
+        onCreateSchedule={() => undefined}
+        onUpdateSchedule={() => undefined}
+        onDeleteSchedule={() => undefined}
+        onSessionUpdate={() => undefined}
+      />
+    );
+
+    await openDesktopWorkspaceView(user, "terminal");
+    await user.selectOptions(screen.getByLabelText("Frequent commands"), [
+      "git-add",
+    ]);
+    await user.click(
+      screen.getByRole("button", { name: "Send selected frequent command" })
+    );
+    expect(onSendInput).toHaveBeenNthCalledWith(1, "git add .", true);
+
+    await user.selectOptions(screen.getByLabelText("Frequent commands"), [
+      "ctrl-c",
+    ]);
+    await user.click(
+      screen.getByRole("button", { name: "Send selected frequent command" })
+    );
+    expect(onSendInput).toHaveBeenNthCalledWith(2, "\u0003", false);
+
+    await user.selectOptions(screen.getByLabelText("Frequent commands"), [
+      "esc",
+    ]);
+    await user.click(
+      screen.getByRole("button", { name: "Send selected frequent command" })
+    );
+    expect(onSendInput).toHaveBeenNthCalledWith(3, "\u001b", false);
+  });
+
+  it("keeps schedules out of the queue workspace", async () => {
+    const user = userEvent.setup();
+    class MockEventSource {
+      addEventListener = vi.fn();
+      removeEventListener = vi.fn();
+      close = vi.fn();
+      onerror: (() => void) | null = null;
+    }
+    vi.stubGlobal("EventSource", MockEventSource);
+
+    render(
+      <OrchestratorPane
+        capabilities={{
+          available: true,
+          defaultProjectPath: "/tmp/project",
+          recentProjectPaths: [],
+          tmuxInstalled: true,
+          copilotInstalled: true,
+          defaultCliProvider: "copilot",
+          cliProviders: [
+            {
+              id: "copilot",
+              displayName: "GitHub Copilot CLI",
+              description: "Uses the installed copilot CLI.",
+              capabilities: {
+                supportsCustomAgents: true,
+                supportsExecutionMode: true,
+              },
+            },
+          ],
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+        }}
+        session={{
+          sessionId: "2026-03-20-repo-support",
+          agentId: "copilot-orchestrator",
+          title: "Repo support",
+          startedAt: "2026-03-20T12:00:00Z",
+          updatedAt: "2026-03-20T12:05:00Z",
+          summary: "Handle runtime support work",
+          projectPath: "/tmp/project",
+          projectPurpose: "Handle runtime support work",
+          cliProvider: "copilot",
+          model: "gpt-5",
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+          tmuxWindowName: "project-repo-support-0001",
+          tmuxPaneId: "%42",
+          status: "idle",
+          activeJobId: undefined,
+          lastJobId: "job-queued",
+          availableCustomAgents: [],
+          selectedCustomAgentId: undefined,
+          executionMode: "standard",
+          sessionDirectory: "/tmp/session",
+          manifestPath:
+            "agents/copilot-orchestrator/history/2026-03/2026-03-20-repo-support/SESSION.md",
+          jobs: [
+            {
+              jobId: "job-queued",
+              sessionId: "2026-03-20-repo-support",
+              promptPreview: "Draft the release note update",
+              promptMode: "inline",
+              status: "queued",
+              submittedAt: "2026-03-20T12:04:00Z",
+              jobDirectory: "/tmp/session/delegations/job-queued",
+            },
+          ],
+          terminalTail: "",
+          logSize: 0,
+        }}
+        models={[
+          {
+            id: "gpt-5",
+            displayName: "GPT-5",
+            runtimeProvider: "copilot",
+            supportedReasoningEfforts: [],
+          },
+        ]}
+        defaultModelId="gpt-5"
+        projectPathSuggestions={["/tmp/project"]}
+        pending={false}
+        onCreateSession={() => undefined}
+        onUpdateSession={() => undefined}
+        onDelegate={() => undefined}
+        onSendInput={() => undefined}
+        onCancelJob={() => undefined}
+        onRestartSession={() => undefined}
+        onDeleteQueuedJob={() => undefined}
+        schedules={[
+          {
+            scheduleId: "schedule-1",
+            sessionId: "2026-03-20-repo-support",
+            title: "Nightly review",
+            prompt: "Summarize the current state of work.",
+            frequency: "daily",
+            timezone: "UTC",
+            timeOfDay: "09:00",
+            enabled: true,
+            nextRunAt: "2026-03-21T09:00:00Z",
+            createdAt: "2026-03-20T12:00:00Z",
+            updatedAt: "2026-03-20T12:05:00Z",
+            totalRuns: 2,
+            failedRuns: 0,
+          },
+        ]}
+        onCreateSchedule={() => undefined}
+        onUpdateSchedule={() => undefined}
+        onDeleteSchedule={() => undefined}
+        onSessionUpdate={() => undefined}
+      />
+    );
+
+    await openDesktopWorkspaceView(user, "queue");
+    const queueWorkspace = document.querySelector(
+      ".orchestrator-board-card-queue.is-active"
+    );
+    expect(queueWorkspace).toBeTruthy();
+    expect(
+      within(queueWorkspace as HTMLElement).queryByText("Nightly review")
+    ).toBeNull();
+
+    await openDesktopWorkspaceView(user, "schedules");
+    const schedulesWorkspace = document.querySelector(
+      ".orchestrator-board-card-schedules.is-active"
+    );
+    expect(schedulesWorkspace).toBeTruthy();
+    expect(
+      within(schedulesWorkspace as HTMLElement).getByText("Nightly review")
+    ).toBeTruthy();
   });
 
   it("routes queued task deletion through the provided handler", async () => {
@@ -1911,7 +2688,7 @@ describe("OrchestratorPane", () => {
       />
     );
 
-    await user.click(screen.getByRole("button", { name: "Open task queue" }));
+    await openDesktopWorkspaceView(user, "queue");
     await user.click(screen.getByRole("button", { name: "Remove" }));
     expect(onDeleteQueuedJob).toHaveBeenCalledWith("job-queued");
   });
@@ -1998,6 +2775,7 @@ describe("OrchestratorPane", () => {
       />
     );
 
+    await openDesktopWorkspaceView(user, "terminal");
     const resizeHandle = screen.getByRole("button", {
       name: "Resize tmux output",
     });
@@ -2093,7 +2871,7 @@ describe("OrchestratorPane", () => {
       />
     );
 
-    await user.click(screen.getByRole("button", { name: "Open task queue" }));
+    await openDesktopWorkspaceView(user, "queue");
     await user.click(screen.getByRole("button", { name: "Retry" }));
     expect(onRetryFailedJob).toHaveBeenCalledWith("job-failed");
   });
@@ -2390,6 +3168,7 @@ describe("OrchestratorPane", () => {
       />
     );
 
+    await openDesktopWorkspaceView(user, "terminal");
     await user.click(
       screen.getByRole("button", { name: "Start a new tmux session" })
     );

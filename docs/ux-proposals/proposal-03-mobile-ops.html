@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Design 03 - Responsive Ops Board</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: Inter, "Segoe UI", system-ui, sans-serif;
+        background: #0f0f16;
+        color: #f4f4ff;
+      }
+      .wrap {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 24px 16px 40px;
+      }
+      .card {
+        border: 1px solid #313149;
+        background: #1a1a28;
+        border-radius: 14px;
+        padding: 16px;
+        margin-bottom: 14px;
+      }
+      h1,
+      h2,
+      h3 {
+        margin: 0 0 10px;
+      }
+      p,
+      li {
+        color: #b9b9d8;
+        line-height: 1.55;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 10px;
+      }
+      .lane,
+      .mini {
+        border: 1px dashed #4f4f77;
+        border-radius: 10px;
+        padding: 12px;
+        background: #151521;
+      }
+      .badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .badge {
+        border: 1px solid #575789;
+        color: #cacafd;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+      }
+      code {
+        background: #0d1321;
+        border: 1px solid #313149;
+        border-radius: 6px;
+        padding: 1px 6px;
+        color: #d8e3ff;
+      }
+      a {
+        color: #a6b6ff;
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        border: 1px solid #313149;
+        padding: 10px;
+        text-align: left;
+        vertical-align: top;
+        color: #b9b9d8;
+      }
+      th {
+        color: #f4f4ff;
+        background: #151521;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Design 03: Responsive Ops Board</h1>
+      <p>
+        A desktop-and-mobile orchestration system built around a visible active
+        session, a faster task queue board on mobile, and a calmer multi-pane
+        desktop workspace. This spec now tracks the current product behavior
+        closely so implementation can move forward without regressing existing
+        functionality.
+      </p>
+
+      <section class="card">
+        <h2>Design goals</h2>
+        <ul>
+          <li>Keep the current session-scoped orchestration model intact.</li>
+          <li>Reduce cognitive load by separating authoring, monitoring, review, and automation surfaces.</li>
+          <li>Add faster desktop power-user navigation through a command palette.</li>
+          <li>Turn mobile Home into a real queue board instead of a compressed desktop shell.</li>
+          <li>Preserve all existing behaviors: session continuation, queue actions, tmux output, diff review, and schedule CRUD.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Primary layout model</h2>
+        <div class="grid">
+          <div class="lane">
+            <strong>Desktop</strong>
+            <p>
+              Left session rail + resizable main workspace with tabs for
+              Delegate, Terminal, Queue, Changes, and Schedules.
+            </p>
+          </div>
+          <div class="lane">
+            <strong>Mobile</strong>
+            <p>
+              Active-session header + Home queue board + bottom navigation for
+              Delegate, Terminal, Changes, and Settings.
+            </p>
+          </div>
+          <div class="lane">
+            <strong>Keyboard layer</strong>
+            <p>
+              Desktop command palette (<code>Cmd/Ctrl + K</code>) for switching
+              sessions and jumping to high-value actions without expanding the UI.
+            </p>
+          </div>
+          <div class="lane">
+            <strong>No-session behavior</strong>
+            <p>
+              Delegate, Terminal, and Changes only operate on the selected
+              orchestrator session. If none is selected, all entry points must
+              redirect to create/select session rather than dispatching work
+              ambiguously.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Behavior parity with the current app</h2>
+        <ul>
+          <li><strong>Session selection remains primary.</strong> The design does not replace the selected-session model with cross-session aggregation.</li>
+          <li><strong>Provider continuation stays supported.</strong> Existing coding-agent session IDs still exist in session creation and settings, but can be collapsed as advanced fields in the new UX.</li>
+          <li><strong>Delegate remains session-scoped.</strong> Prompt, one attachment, model/mode context, and optional per-task continuation override stay available.</li>
+          <li><strong>Terminal remains tmux-backed.</strong> Reconnect state, send input, submit line, load older output, cancel current job, and new tmux session must remain visible somewhere in the flow.</li>
+          <li><strong>Queue semantics stay accurate.</strong> One running job plus queued, failed, and completed history; retry/remove/continue actions are preserved. The design should not imply drag-reordering unless implementation changes.</li>
+          <li><strong>Schedules remain CRUD-based.</strong> Editing includes frequency, timezone, weekly/monthly timing, email delivery, optional custom agent override, pause/resume, delete, and status summaries.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Desktop interaction contract</h2>
+        <div class="grid">
+          <div class="mini">
+            <strong>Session rail</strong>
+            <p>
+              Shows session title, provider, model, execution mode, and current
+              continuation target. Supports session switching and entry to session
+              settings.
+            </p>
+          </div>
+          <div class="mini">
+            <strong>Command palette</strong>
+            <p>
+              Scope: create session, switch session, open Queue/Changes/Schedules,
+              focus delegate composer, retry latest failed job, and focus terminal.
+            </p>
+          </div>
+          <div class="mini">
+            <strong>Main tabs</strong>
+            <p>
+              Delegate, Terminal, Queue, Changes, and Schedules stay visible as
+              first-class panes instead of one long scrolling column.
+            </p>
+          </div>
+          <div class="mini">
+            <strong>Diff review</strong>
+            <p>
+              Changes becomes a persistent workspace tab with loading, error,
+              clean-working-tree, and text/binary diff states.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Mobile interaction contract</h2>
+        <div class="grid">
+          <div class="mini">
+            <strong>Home = queue board</strong>
+            <p>
+              Running, queued, failed, and scheduled work are organized into a
+              queue-centric board. This is where mobile users inspect and manage
+              task state.
+            </p>
+          </div>
+          <div class="mini">
+            <strong>Session picker</strong>
+            <p>
+              Mobile must expose a visible selected session and a quick switch
+              pattern. Home owns this responsibility.
+            </p>
+          </div>
+          <div class="mini">
+            <strong>Delete queued work</strong>
+            <p>
+              Use swipe-to-reveal or inline delete actions, but document the
+              affordance explicitly and preserve current remove behavior.
+            </p>
+          </div>
+          <div class="mini">
+            <strong>Bottom navigation</strong>
+            <p>
+              Home, Delegate, Terminal, Changes, Settings. Home handles queue
+              oversight; Settings handles session defaults and schedules.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Create-session vs session-settings fields</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Surface</th>
+              <th>Fields that belong here</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Create session</td>
+              <td>
+                Title, project path, provider, model, execution mode, required
+                project purpose, optional project description, optional existing
+                coding-agent session ID, optional first task.
+              </td>
+            </tr>
+            <tr>
+              <td>Session settings</td>
+              <td>
+                Title updates, provider/model/mode defaults for future jobs,
+                existing coding-agent session ID, custom agent, delete session,
+                and clarifying copy that changes only affect future delegated jobs.
+              </td>
+            </tr>
+            <tr>
+              <td>Delegate task</td>
+              <td>
+                Prompt, attachment, visible target session, model/mode visibility,
+                and optional per-task continuation override.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>State matrix</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Surface</th>
+              <th>Required states</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Session selection</td>
+              <td>active, available, missing, duplicate warning, create-first</td>
+            </tr>
+            <tr>
+              <td>Delegate</td>
+              <td>ready, pending, disabled-without-session, validation error</td>
+            </tr>
+            <tr>
+              <td>Terminal</td>
+              <td>idle, streaming, reconnecting, disconnected, load-more pending, load-more error</td>
+            </tr>
+            <tr>
+              <td>Queue</td>
+              <td>running, queued, failed, completed, empty</td>
+            </tr>
+            <tr>
+              <td>Changes</td>
+              <td>loading, clean, changed, diff error, binary/no-text diff</td>
+            </tr>
+            <tr>
+              <td>Schedules</td>
+              <td>active, paused, empty, email error, edit modal, delete confirmation</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>Terminology</h2>
+        <ul>
+          <li><strong>Active session:</strong> the currently selected orchestrator session that owns delegate, terminal, changes, and schedules.</li>
+          <li><strong>Queue board:</strong> the mobile Home surface that summarizes running, queued, failed, and scheduled work.</li>
+          <li><strong>Coding-agent session ID:</strong> optional provider-specific continuation target used by Copilot, Gemini, Codex, or OpenCode.</li>
+          <li><strong>Project purpose:</strong> the required current field that captures the session objective and can later seed a richer system prompt.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Implementation handoff</h2>
+        <ul>
+          <li><a href="./wireframe-03-mobile-ops.html">Open the responsive wireframe showcase</a></li>
+          <li>Use <code>icons-03-mobile-ops.svg</code> for the matching icon system.</li>
+          <li>Do not ship unsupported behaviors from the prototype copy: no queue drag-reorder and no manual schedule trigger unless the runtime/API expands.</li>
+        </ul>
+        <div class="badges">
+          <span class="badge">ic-mobile-home</span>
+          <span class="badge">ic-mobile-delegate</span>
+          <span class="badge">ic-mobile-queue</span>
+          <span class="badge">ic-mobile-changes</span>
+          <span class="badge">ic-mobile-settings</span>
+          <span class="badge">ic-drawer-terminal</span>
+          <span class="badge">ic-swipe-resize</span>
+          <span class="badge">ic-quick-retry</span>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,2923 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <title>Design 03 Showcase - Mobile Ops Board</title>
+    <style>
+      :root {
+        --bg-primary: #0f0f16;
+        --bg-secondary: #1a1a28;
+        --bg-tertiary: #242435;
+        --bg-elevated: #2b2b3f;
+        --text-primary: #f4f4ff;
+        --text-secondary: #b9b9d8;
+        --text-muted: #8f8fb5;
+        --border-color: #313149;
+        --border-strong: #4c4c72;
+        --accent: #7c6eff;
+        --accent-soft: rgba(124, 110, 255, 0.18);
+        --success: #22c55e;
+        --warning: #f59e0b;
+        --danger: #ef4444;
+        --info: #60a5fa;
+        --radius-sm: 10px;
+        --radius-md: 16px;
+        --radius-lg: 24px;
+        --shadow-soft: 0 18px 45px rgba(0, 0, 0, 0.22);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+      }
+
+      body {
+        font-family:
+          Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont,
+          sans-serif;
+        background:
+          radial-gradient(circle at top, rgba(124, 110, 255, 0.12), transparent 28%),
+          var(--bg-primary);
+        color: var(--text-primary);
+      }
+
+      button,
+      input,
+      textarea,
+      select {
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      .page {
+        width: min(1600px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 24px 0 48px;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.9fr);
+        gap: 20px;
+        margin-bottom: 20px;
+      }
+
+      .hero-card,
+      .panel,
+      .preview-card {
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        background: rgba(26, 26, 40, 0.92);
+        box-shadow: var(--shadow-soft);
+      }
+
+      .hero-card {
+        padding: 24px;
+      }
+
+      .eyebrow {
+        margin: 0 0 10px;
+        color: var(--info);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      .hero h1 {
+        font-size: clamp(32px, 4vw, 48px);
+        line-height: 1.04;
+        margin-bottom: 14px;
+      }
+
+      .hero p {
+        color: var(--text-secondary);
+        line-height: 1.6;
+      }
+
+      .hero-stats {
+        display: grid;
+        gap: 12px;
+      }
+
+      .stat {
+        padding: 18px;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+      }
+
+      .stat strong {
+        display: block;
+        font-size: 14px;
+        margin-bottom: 8px;
+      }
+
+      .stat span {
+        color: var(--text-secondary);
+        line-height: 1.5;
+        font-size: 14px;
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+
+      .panel {
+        padding: 18px;
+      }
+
+      .panel h2 {
+        font-size: 16px;
+        margin-bottom: 10px;
+      }
+
+      .panel-copy {
+        color: var(--text-secondary);
+        font-size: 14px;
+        line-height: 1.5;
+        margin-bottom: 14px;
+      }
+
+      .button-row,
+      .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .pill,
+      .chip,
+      .ghost-btn,
+      .primary-btn {
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-tertiary);
+        color: var(--text-secondary);
+        padding: 10px 14px;
+        transition:
+          border-color 120ms ease,
+          background 120ms ease,
+          color 120ms ease,
+          transform 120ms ease;
+      }
+
+      .pill:hover,
+      .chip:hover,
+      .ghost-btn:hover,
+      .primary-btn:hover {
+        border-color: var(--border-strong);
+        color: var(--text-primary);
+        transform: translateY(-1px);
+      }
+
+      .pill.active,
+      .chip.active {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+        color: var(--text-primary);
+      }
+
+      .chip {
+        padding: 7px 12px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .ghost-btn {
+        background: transparent;
+      }
+
+      .primary-btn {
+        background: var(--accent);
+        border-color: transparent;
+        color: white;
+      }
+
+      .showcase {
+        display: grid;
+        grid-template-columns: 340px minmax(0, 1fr);
+        gap: 20px;
+        align-items: start;
+      }
+
+      .guide {
+        display: grid;
+        gap: 16px;
+        position: sticky;
+        top: 16px;
+      }
+
+      .guide .panel {
+        padding: 20px;
+      }
+
+      .guide-list,
+      .coverage-list {
+        display: grid;
+        gap: 10px;
+        margin: 14px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .guide-step,
+      .coverage-item {
+        display: grid;
+        gap: 4px;
+        padding: 12px 14px;
+        border-radius: 14px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+      }
+
+      .guide-step strong,
+      .coverage-item strong {
+        font-size: 13px;
+      }
+
+      .guide-step span,
+      .coverage-item span {
+        color: var(--text-secondary);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .preview-grid {
+        display: grid;
+        gap: 20px;
+      }
+
+      .preview-card {
+        padding: 16px;
+      }
+
+      .preview-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+
+      .preview-header p {
+        color: var(--text-secondary);
+        font-size: 14px;
+      }
+
+      .badge-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 12px;
+        font-weight: 700;
+        border: 1px solid var(--border-color);
+        background: var(--bg-tertiary);
+        color: var(--text-secondary);
+      }
+
+      .badge.is-accent {
+        color: white;
+        background: var(--accent);
+        border-color: transparent;
+      }
+
+      .badge.is-success {
+        color: #09210f;
+        background: rgba(34, 197, 94, 0.88);
+        border-color: transparent;
+      }
+
+      .badge.is-warning {
+        color: #261700;
+        background: rgba(245, 158, 11, 0.9);
+        border-color: transparent;
+      }
+
+      .badge.is-danger {
+        color: white;
+        background: rgba(239, 68, 68, 0.9);
+        border-color: transparent;
+      }
+
+      .desktop-preview {
+        display: grid;
+        grid-template-columns: 300px 14px minmax(0, 1fr);
+        min-height: 860px;
+        border-radius: 22px;
+        overflow: hidden;
+        border: 1px solid var(--border-color);
+        background: linear-gradient(180deg, #11111a 0%, #0c0c13 100%);
+      }
+
+      .sidebar {
+        display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        gap: 14px;
+        padding: 16px;
+        background: rgba(18, 18, 29, 0.95);
+        border-right: 1px solid var(--border-color);
+      }
+
+      .resize-rail {
+        position: relative;
+        background: linear-gradient(
+          180deg,
+          rgba(96, 165, 250, 0.12),
+          rgba(124, 110, 255, 0.12)
+        );
+      }
+
+      .resize-rail::after {
+        content: "drag";
+        position: absolute;
+        inset: 50% auto auto 50%;
+        transform: translate(-50%, -50%) rotate(90deg);
+        font-size: 11px;
+        letter-spacing: 0.18em;
+        color: var(--text-muted);
+        text-transform: uppercase;
+      }
+
+      .sidebar-top,
+      .sidebar-block,
+      .desktop-main,
+      .workspace-card,
+      .mobile-preview {
+        min-width: 0;
+      }
+
+      .sidebar-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        gap: 10px;
+      }
+
+      .sidebar-top h3 {
+        font-size: 18px;
+        margin-bottom: 4px;
+      }
+
+      .sidebar-top p,
+      .muted {
+        color: var(--text-secondary);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .sidebar-block {
+        border: 1px solid var(--border-color);
+        border-radius: 18px;
+        background: var(--bg-secondary);
+        padding: 14px;
+      }
+
+      .sidebar-block h4,
+      .workspace-card h4,
+      .section-title {
+        margin: 0 0 10px;
+        font-size: 13px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+
+      .session-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .session-card {
+        padding: 12px;
+        border-radius: 16px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-tertiary);
+        display: grid;
+        gap: 8px;
+      }
+
+      .session-card.is-active {
+        border-color: var(--accent);
+        background: rgba(124, 110, 255, 0.12);
+      }
+
+      .session-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .session-title strong {
+        font-size: 14px;
+      }
+
+      .session-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .meta-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 9px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.04);
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+
+      .desktop-main {
+        display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr);
+        gap: 14px;
+        padding: 16px;
+      }
+
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: start;
+      }
+
+      .topbar h3 {
+        font-size: 22px;
+        margin-bottom: 4px;
+      }
+
+      .topbar p {
+        color: var(--text-secondary);
+        font-size: 14px;
+        line-height: 1.55;
+      }
+
+      .tabbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .tab {
+        padding: 10px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+        font-weight: 700;
+      }
+
+      .tab.active {
+        color: white;
+        background: var(--accent);
+        border-color: transparent;
+      }
+
+      .workspace {
+        display: grid;
+        gap: 14px;
+      }
+
+      .command-bar,
+      .mobile-quick-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .command-bar {
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 14px;
+        border-radius: 18px;
+        border: 1px solid var(--border-color);
+        background: rgba(124, 110, 255, 0.08);
+      }
+
+      .command-hint {
+        display: grid;
+        gap: 4px;
+      }
+
+      .command-hint strong {
+        font-size: 14px;
+      }
+
+      .command-hint span,
+      .swipe-hint {
+        color: var(--text-secondary);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .quick-command {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .desktop-pane {
+        display: none;
+        gap: 14px;
+      }
+
+      .desktop-pane.active {
+        display: grid;
+      }
+
+      .workspace-card {
+        border: 1px solid var(--border-color);
+        border-radius: 18px;
+        background: var(--bg-secondary);
+        padding: 16px;
+      }
+
+      .split-2,
+      .split-3,
+      .changes-layout,
+      .schedule-layout {
+        display: grid;
+        gap: 14px;
+      }
+
+      .split-2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .split-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .field-grid {
+        display: grid;
+        gap: 12px;
+      }
+
+      .field-grid.two {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .field {
+        display: grid;
+        gap: 8px;
+      }
+
+      .field label {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--text-muted);
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+
+      .input,
+      .textarea,
+      .select,
+      .terminal-input {
+        width: 100%;
+        border-radius: 14px;
+        border: 1px solid var(--border-color);
+        background: #12121d;
+        color: var(--text-primary);
+        padding: 12px 14px;
+      }
+
+      .textarea {
+        min-height: 120px;
+        resize: vertical;
+      }
+
+      .hint {
+        color: var(--text-muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .info-grid {
+        display: grid;
+        gap: 10px;
+      }
+
+      .info-box {
+        padding: 12px;
+        border-radius: 14px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-tertiary);
+      }
+
+      .info-box strong {
+        display: block;
+        font-size: 13px;
+        margin-bottom: 4px;
+      }
+
+      .info-box span {
+        display: block;
+        color: var(--text-secondary);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .status-banner {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 14px;
+        border-radius: 16px;
+        border: 1px solid var(--border-color);
+        background: rgba(96, 165, 250, 0.12);
+      }
+
+      .status-banner.warning {
+        background: rgba(245, 158, 11, 0.12);
+      }
+
+      .status-banner.error {
+        background: rgba(239, 68, 68, 0.12);
+      }
+
+      .status-banner strong {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 14px;
+      }
+
+      .status-banner span {
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+
+      .terminal {
+        border-radius: 18px;
+        border: 1px solid var(--border-color);
+        background: #0b0b12;
+        overflow: hidden;
+      }
+
+      .terminal-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--border-color);
+        background: #12121a;
+      }
+
+      .terminal-body {
+        padding: 14px;
+        min-height: 240px;
+        display: grid;
+        gap: 8px;
+        font-family:
+          ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .terminal-line {
+        color: #cdd5ff;
+      }
+
+      .terminal-line.muted {
+        color: #8d95be;
+      }
+
+      .terminal-line.success {
+        color: #7ef2a7;
+      }
+
+      .terminal-line.warning {
+        color: #ffd278;
+      }
+
+      .terminal-line.error {
+        color: #ff9a9a;
+      }
+
+      .queue-columns {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .queue-lane {
+        border-radius: 18px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        padding: 14px;
+        display: grid;
+        gap: 10px;
+        align-content: start;
+      }
+
+      .lane-heading {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .lane-heading strong {
+        font-size: 14px;
+      }
+
+      .job-card {
+        display: grid;
+        gap: 10px;
+        border-radius: 16px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-tertiary);
+        padding: 12px;
+      }
+
+      .job-top,
+      .job-foot {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: start;
+      }
+
+      .job-title {
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .job-copy {
+        color: var(--text-secondary);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .mini-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .mini-btn {
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+        background: transparent;
+        color: var(--text-secondary);
+        padding: 7px 10px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .changes-layout {
+        grid-template-columns: 280px minmax(0, 1fr);
+      }
+
+      .file-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .file-item {
+        width: 100%;
+        text-align: left;
+        border-radius: 14px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        padding: 12px;
+      }
+
+      .file-item.active {
+        border-color: var(--accent);
+        background: rgba(124, 110, 255, 0.16);
+      }
+
+      .file-item small,
+      .run-history small {
+        display: block;
+        margin-top: 4px;
+        color: var(--text-secondary);
+      }
+
+      .diff-view {
+        border-radius: 18px;
+        border: 1px solid var(--border-color);
+        background: #101019;
+        overflow: hidden;
+      }
+
+      .diff-head {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .code {
+        margin: 0;
+        padding: 14px;
+        overflow: auto;
+        font-family:
+          ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .code-line {
+        display: block;
+        white-space: pre;
+      }
+
+      .code-line.add {
+        background: rgba(34, 197, 94, 0.12);
+        color: #b8ffd1;
+      }
+
+      .code-line.remove {
+        background: rgba(239, 68, 68, 0.12);
+        color: #ffc3c3;
+      }
+
+      .code-line.context {
+        color: #c9d1ff;
+      }
+
+      .token-keyword {
+        color: #ffb86c;
+      }
+
+      .token-string {
+        color: #9fef9f;
+      }
+
+      .token-name {
+        color: #9fc8ff;
+      }
+
+      .schedule-layout {
+        grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+      }
+
+      .schedule-card {
+        display: grid;
+        gap: 10px;
+        padding: 14px;
+        border-radius: 18px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-tertiary);
+      }
+
+      .schedule-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: start;
+      }
+
+      .day-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .day {
+        width: 34px;
+        height: 34px;
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+        display: grid;
+        place-items: center;
+        font-size: 12px;
+        color: var(--text-secondary);
+        background: transparent;
+      }
+
+      .day.active {
+        background: var(--accent);
+        border-color: transparent;
+        color: white;
+      }
+
+      .run-history {
+        display: grid;
+        gap: 10px;
+      }
+
+      .run-item {
+        padding: 12px;
+        border-radius: 14px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-tertiary);
+      }
+
+      .mobile-preview {
+        width: min(100%, 420px);
+        margin: 0 auto;
+        min-height: 860px;
+        border-radius: 28px;
+        border: 1px solid var(--border-color);
+        overflow: hidden;
+        background: linear-gradient(180deg, #11111a 0%, #0c0c13 100%);
+        display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+      }
+
+      .mobile-topbar,
+      .mobile-session,
+      .mobile-content,
+      .mobile-nav {
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+
+      .mobile-topbar {
+        padding-top: 16px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        gap: 12px;
+      }
+
+      .mobile-topbar h3 {
+        font-size: 22px;
+        margin-bottom: 4px;
+      }
+
+      .mobile-session {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        padding-top: 12px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .mobile-session strong {
+        display: block;
+        margin-bottom: 6px;
+      }
+
+      .mobile-content {
+        padding-top: 14px;
+        padding-bottom: 14px;
+        overflow: auto;
+        display: grid;
+        align-content: start;
+        gap: 14px;
+      }
+
+      .mobile-view {
+        display: none;
+        gap: 14px;
+      }
+
+      .mobile-view.active {
+        display: grid;
+      }
+
+      .mobile-card {
+        border-radius: 18px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        padding: 14px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .no-session-banner {
+        padding: 12px 14px;
+        border-radius: 16px;
+        border: 1px solid rgba(245, 158, 11, 0.45);
+        background: rgba(245, 158, 11, 0.12);
+      }
+
+      .no-session-banner strong {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 14px;
+      }
+
+      .no-session-banner span {
+        color: var(--text-secondary);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .lane-stack {
+        display: grid;
+        gap: 12px;
+      }
+
+      .session-switcher {
+        display: grid;
+        gap: 10px;
+      }
+
+      .session-switcher .session-card {
+        margin: 0;
+      }
+
+      .lane-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        width: fit-content;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-tertiary);
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+
+      .bottom-sheet {
+        border-radius: 22px;
+        border: 1px solid var(--border-color);
+        background: #101018;
+        overflow: hidden;
+      }
+
+      .sheet-handle {
+        width: 56px;
+        height: 5px;
+        border-radius: 999px;
+        background: var(--border-strong);
+        margin: 10px auto 0;
+      }
+
+      .mobile-nav {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 8px;
+        padding-top: 12px;
+        padding-bottom: 16px;
+        border-top: 1px solid var(--border-color);
+      }
+
+      .nav-btn {
+        display: grid;
+        gap: 4px;
+        justify-items: center;
+        padding: 10px 8px;
+        border-radius: 18px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--text-muted);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .nav-btn.active {
+        color: white;
+        background: rgba(124, 110, 255, 0.16);
+        border-color: rgba(124, 110, 255, 0.42);
+      }
+
+      .nav-icon {
+        width: 22px;
+        height: 22px;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        background: var(--bg-tertiary);
+        font-size: 12px;
+      }
+
+      .empty-state {
+        border: 1px dashed var(--border-strong);
+        border-radius: 18px;
+        padding: 18px;
+        color: var(--text-secondary);
+        line-height: 1.55;
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(5, 5, 10, 0.68);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        z-index: 20;
+      }
+
+      .modal-backdrop.open {
+        display: flex;
+      }
+
+      .modal {
+        width: min(720px, 100%);
+        border-radius: 24px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        box-shadow: 0 28px 90px rgba(0, 0, 0, 0.36);
+        overflow: hidden;
+      }
+
+      .modal-header,
+      .modal-footer {
+        padding: 18px 20px;
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .modal-footer {
+        border-bottom: 0;
+        border-top: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .modal-body {
+        padding: 20px;
+        display: grid;
+        gap: 16px;
+      }
+
+      .linkish {
+        color: #b8c7ff;
+      }
+
+      @media (max-width: 1260px) {
+        .showcase {
+          grid-template-columns: 1fr;
+        }
+
+        .guide {
+          position: static;
+        }
+
+        .controls {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 1080px) {
+        .hero {
+          grid-template-columns: 1fr;
+        }
+
+        .desktop-preview {
+          grid-template-columns: 260px 12px minmax(0, 1fr);
+        }
+
+        .queue-columns,
+        .split-3,
+        .schedule-layout,
+        .changes-layout {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 860px) {
+        .page {
+          width: min(100%, calc(100% - 20px));
+          padding-top: 16px;
+        }
+
+        .desktop-preview {
+          grid-template-columns: 1fr;
+          min-height: auto;
+        }
+
+        .resize-rail {
+          display: none;
+        }
+
+        .sidebar {
+          border-right: 0;
+          border-bottom: 1px solid var(--border-color);
+        }
+
+        .split-2,
+        .field-grid.two {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <article class="hero-card">
+          <p class="eyebrow">Design 03 showcase</p>
+          <h1>Browser-first responsive board for desktop and mobile orchestration.</h1>
+          <p>
+            This version removes the device chrome entirely and instead shows the
+            new interaction model as a real responsive product surface. Use the
+            journey controls to step through the three key workflows, then switch
+            state to review empty, live, and reconnect/error moments across
+            sessions, delegation, terminal output, queueing, diffs, and schedules.
+          </p>
+        </article>
+
+        <div class="hero-stats">
+          <article class="stat">
+            <strong>Desktop behavior</strong>
+            <span>
+              Resizable session rail, persistent workspace tabs, and clear handoff
+              between delegate, terminal, queue, changes, and schedules.
+            </span>
+          </article>
+          <article class="stat">
+            <strong>Mobile behavior</strong>
+            <span>
+              Lane-based home board, bottom navigation, and a terminal drawer view
+              that keeps queue, delete actions, and change triage reachable on a
+              smaller screen.
+            </span>
+          </article>
+          <article class="stat">
+            <strong>Feature coverage</strong>
+            <span>
+              Desktop command palette, model and execution mode selection, file
+              attachments, SSE reconnect states, retry flow, diff review, schedule
+              editing, and manual schedule runs.
+            </span>
+          </article>
+        </div>
+      </section>
+
+      <section class="controls">
+        <article class="panel">
+          <h2>Choose a journey</h2>
+          <p class="panel-copy">
+            Each journey shifts both previews so you can inspect the intended
+            desktop and mobile behavior for the same task.
+          </p>
+          <div class="button-row" id="storyButtons"></div>
+        </article>
+
+        <article class="panel">
+          <h2>Switch state</h2>
+          <p class="panel-copy">
+            Show how the design handles first-run empties, live work, and temporary
+            reconnect or failure states.
+          </p>
+          <div class="button-row" id="stageButtons"></div>
+        </article>
+
+        <article class="panel">
+          <h2>Open key moments</h2>
+          <p class="panel-copy">
+            Use the modal shortcuts to inspect create-session, retry, schedule, and
+            session continuation details without leaving the showcase.
+          </p>
+          <div class="button-row">
+          <button type="button" class="ghost-btn" data-action="open-modal" data-modal="palette">
+            Command palette
+            </button>
+          <button type="button" class="ghost-btn" data-action="open-modal" data-modal="create">
+            Create session
+          </button>
+            <button type="button" class="ghost-btn" data-action="open-modal" data-modal="retry">
+              Retry failed job
+            </button>
+            <button type="button" class="ghost-btn" data-action="open-modal" data-modal="schedule">
+              Edit schedule
+            </button>
+            <button type="button" class="ghost-btn" data-action="open-modal" data-modal="session">
+              Session settings
+            </button>
+          </div>
+        </article>
+      </section>
+
+      <section class="showcase">
+        <aside class="guide">
+          <article class="panel">
+            <h2 id="guideTitle">Journey</h2>
+            <p class="panel-copy" id="guideSummary"></p>
+            <ul class="guide-list" id="guideSteps"></ul>
+          </article>
+
+          <article class="panel">
+            <h2>What this design now makes obvious</h2>
+            <ul class="coverage-list">
+              <li class="coverage-item">
+                <strong>Desktop actions become faster without crowding the layout.</strong>
+                <span>
+                  A command palette adds keyboard-first access to create session,
+                  jump tabs, retry jobs, and open schedule actions while keeping the
+                  main workspace visually calm.
+                </span>
+              </li>
+              <li class="coverage-item">
+                <strong>Queue and changes are part of the same workflow.</strong>
+                <span>
+                  Users can move from prompt to output to diff review without losing
+                  the current session or selected job, and on mobile the Home view
+                  now clearly acts as the task queue board.
+                </span>
+              </li>
+              <li class="coverage-item">
+                <strong>Schedules feel like automation, not a side panel.</strong>
+                <span>
+                  Recurring work gets a dedicated planning view, run history,
+                  pause/resume controls, and explicit delivery/status details.
+                </span>
+              </li>
+            </ul>
+          </article>
+
+          <article class="panel">
+            <h2>New icon set in this direction</h2>
+            <p class="panel-copy">
+              Use the matching icon pack from
+              <span class="linkish">icons-03-mobile-ops.svg</span> when this
+              direction is implemented.
+            </p>
+            <div class="chip-row">
+              <span class="chip active">ic-mobile-home</span>
+              <span class="chip active">ic-mobile-delegate</span>
+              <span class="chip active">ic-mobile-queue</span>
+              <span class="chip active">ic-mobile-changes</span>
+              <span class="chip active">ic-mobile-settings</span>
+              <span class="chip">ic-drawer-terminal</span>
+              <span class="chip">ic-swipe-resize</span>
+              <span class="chip">ic-quick-retry</span>
+            </div>
+          </article>
+        </aside>
+
+        <div class="preview-grid">
+          <article class="preview-card">
+            <div class="preview-header">
+              <div>
+                <h2>Desktop preview</h2>
+                <p>
+                  Full workspace with a session rail, visible resize handle, and
+                  tabbed content area tuned for longer orchestration loops.
+                </p>
+              </div>
+              <div class="badge-row">
+                <span class="badge is-accent">Desktop</span>
+                <span class="badge" id="desktopStoryBadge"></span>
+                <span class="badge" id="desktopStageBadge"></span>
+              </div>
+            </div>
+            <div id="desktopRoot"></div>
+          </article>
+
+          <article class="preview-card">
+            <div class="preview-header">
+              <div>
+                <h2>Mobile preview</h2>
+                <p>
+                  Lane-based home board plus bottom navigation. This is shown as a
+                  real responsive surface, not a phone frame, so browser resizing
+                  reflects the intended behavior directly.
+                </p>
+              </div>
+              <div class="badge-row">
+                <span class="badge is-accent">Mobile</span>
+                <span class="badge" id="mobileStoryBadge"></span>
+                <span class="badge" id="mobileStageBadge"></span>
+              </div>
+            </div>
+            <div id="mobileRoot"></div>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <div class="modal-backdrop" id="modalBackdrop">
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="modalTitle"></h2>
+          <p class="panel-copy" id="modalIntro"></p>
+        </div>
+        <div class="modal-body" id="modalBody"></div>
+        <div class="modal-footer">
+          <button type="button" class="ghost-btn" data-action="close-modal">Close</button>
+          <button type="button" class="primary-btn" id="modalCta">Looks good for implementation</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const stories = {
+        delegate: {
+          label: "Journey 1",
+          title: "Create a session, delegate with context, inspect the diff",
+          summary:
+            "This path starts with session setup, carries model and provider-session continuity into the delegate form, then moves straight into live output and file review.",
+          desktopTab: "delegate",
+          mobileTab: "delegate",
+          defaultStage: "live",
+          steps: [
+            {
+              title: "Create or resume a working session",
+              copy:
+                "Pick provider, model, and execution mode, then keep or paste a provider session ID so later jobs continue the same CLI thread."
+            },
+            {
+              title: "Delegate with one attached reference file",
+              copy:
+                "The composer keeps file attachment, session continuation, and execution hints in one place instead of splitting them across forms and status strips."
+            },
+            {
+              title: "Watch live output, then jump to changes",
+              copy:
+                "The workspace and the mobile board both let you move from live output to changed files without losing the active session."
+            }
+          ]
+        },
+        queue: {
+          label: "Journey 2",
+          title: "Manage queued jobs, recover a failed run, retry fast",
+          summary:
+            "This path emphasizes the board behavior when a session already has running, queued, and failed work. Retry is treated as a first-class orchestration action.",
+          desktopTab: "queue",
+          mobileTab: "home",
+          defaultStage: "error",
+          steps: [
+            {
+              title: "Scan status across lanes",
+              copy:
+                "Running, queued, failed, and completed jobs stay visible in one glance so the user understands load before opening details."
+            },
+            {
+              title: "Open a failed job with its original prompt",
+              copy:
+                "Retry keeps the original attachment, provider context, and session target while encouraging quick prompt edits."
+            },
+            {
+              title: "Return to output or diff review",
+              copy:
+                "Recovery actions link back to terminal output and working tree changes so the user can confirm the retry actually resolved the issue."
+            }
+          ]
+        },
+        schedule: {
+          label: "Journey 3",
+          title: "Create recurring automations and review schedule history",
+          summary:
+            "This path shifts the design into maintenance mode: plan recurring prompts, trigger a run manually, and keep the last run and next run visible.",
+          desktopTab: "schedules",
+          mobileTab: "settings",
+          defaultStage: "live",
+          steps: [
+            {
+              title: "Define the recurring task once",
+              copy:
+                "Frequency, day selection, provider, model, and execution mode stay together, so scheduled work behaves like a reusable automation recipe."
+            },
+            {
+              title: "Check run history next to the schedule card",
+              copy:
+                "The user sees whether the schedule succeeded, failed, or was triggered manually without leaving the planning view."
+            },
+            {
+              title: "Edit and trigger from the same surface",
+              copy:
+                "The schedule card exposes next run, pause/resume, delivery status, and edit actions without burying automation controls in settings."
+            }
+          ]
+        }
+      };
+
+      const stageMeta = {
+        live: {
+          label: "Live state",
+          desktopBadge: "Live stream",
+          mobileBadge: "Active board"
+        },
+        empty: {
+          label: "Empty state",
+          desktopBadge: "First run",
+          mobileBadge: "No jobs yet"
+        },
+        error: {
+          label: "Reconnect / error",
+          desktopBadge: "Retry flow",
+          mobileBadge: "Attention needed"
+        }
+      };
+
+      const state = {
+        story: "delegate",
+        stage: "live",
+        desktopTab: "delegate",
+        mobileTab: "delegate",
+        modal: null,
+        selectedFile: "apps/web/src/components/OrchestratorPane.tsx"
+      };
+
+      const baseFiles = [
+        {
+          path: "apps/web/src/components/OrchestratorPane.tsx",
+          status: "Modified",
+          note: "Composer spacing, queue labels, active pane memory"
+        },
+        {
+          path: "apps/web/src/components/SessionSidebar.tsx",
+          status: "Modified",
+          note: "Session cards and provider-session visibility"
+        },
+        {
+          path: "docs/ux-proposals/wireframe-03-mobile-ops.html",
+          status: "Added",
+          note: "Responsive design showcase for implementation handoff"
+        }
+      ];
+
+      const diffContent = {
+        "apps/web/src/components/OrchestratorPane.tsx": [
+          '<span class="code-line context">@@ queue card density and remembered tabs @@</span>',
+          '<span class="code-line remove">- const [queueOpen, setQueueOpen] = useState(false);</span>',
+          '<span class="code-line add">+ const [activeWorkspacePane, setActiveWorkspacePane] = useState("delegate");</span>',
+          '<span class="code-line add">+ const [selectedFailedJobId, setSelectedFailedJobId] = useState&lt;string | null&gt;(null);</span>',
+          '<span class="code-line context">  const [delegatePrompt, setDelegatePrompt] = useState("");</span>',
+          '<span class="code-line add">+ const [pinnedProviderSessionId, setPinnedProviderSessionId] = useState("");</span>',
+          '<span class="code-line context">  const [terminalOutput, setTerminalOutput] = useState(props.session?.terminalTail ?? "");</span>'
+        ],
+        "apps/web/src/components/SessionSidebar.tsx": [
+          '<span class="code-line context">@@ active session summary @@</span>',
+          '<span class="code-line add">+ <span class="token-keyword">const</span> <span class="token-name">resumeBadge</span> = session.providerSessionId ?? "Uses orchestrator session";</span>',
+          '<span class="code-line context">  return (</span>',
+          '<span class="code-line add">+   &lt;span class="session-provider-pill"&gt;Resume {resumeBadge}&lt;/span&gt;</span>',
+          '<span class="code-line context">  );</span>'
+        ],
+        "docs/ux-proposals/wireframe-03-mobile-ops.html": [
+          '<span class="code-line context">@@ browser-first showcase @@</span>',
+          '<span class="code-line remove">- .mobile-wrap { max-width: 375px; margin: 20px auto; }</span>',
+          '<span class="code-line add">+ .mobile-preview { width: min(100%, 420px); border-radius: 28px; }</span>',
+          '<span class="code-line add">+ .desktop-preview { grid-template-columns: 300px 14px 1fr; }</span>'
+        ]
+      };
+
+      function getSessions() {
+        const story = state.story;
+        const stage = state.stage;
+        return [
+          {
+            title: "UX redesign handoff",
+            active: stage !== "empty",
+            status: stage === "empty" ? "Available" : stage === "error" ? "Needs attention" : "Active",
+            provider: "Copilot",
+            model: "gpt-5.4",
+            mode: story === "queue" ? "Fleet" : story === "schedule" ? "Auto" : "Standard",
+            sessionId: "cp_8hy2-resume",
+            note:
+              stage === "empty"
+                ? "Existing session, but not selected in the first-run state"
+                : "Continues prior CLI context via saved provider session ID"
+          },
+          {
+            title: "Regression sweep",
+            active: false,
+            status: "Queued follow-ups",
+            provider: "Codex",
+            model: "o4-mini",
+            mode: "Standard",
+            sessionId: "codex-thread-42",
+            note: "Paused while new design work runs"
+          },
+          {
+            title: "Schedule maintenance",
+            active: false,
+            status: "Automation ready",
+            provider: "Gemini",
+            model: "gemini-2.5-pro",
+            mode: "Auto",
+            sessionId: "gem_2026_05_ops",
+            note: "Weekly cleanup schedule attached"
+          }
+        ];
+      }
+
+      function getJobs() {
+        if (state.stage === "empty") {
+          return {
+            running: [],
+            queued: [],
+            failed: [],
+            completed: []
+          };
+        }
+
+        return {
+          running: [
+            {
+              title: "Refine mobile queue copy",
+              copy: "Streaming terminal output now. Attachment: docs/ux-proposals/wireframe-03-mobile-ops.html",
+              status: "running",
+              action: "Open terminal"
+            }
+          ],
+          queued: [
+            {
+              title: "Tighten session card hierarchy",
+              copy: "Queued after current stream finishes. Uses same provider session, model, and attachment.",
+              status: "queued",
+              action: "Open details"
+            },
+            {
+              title: "Audit desktop resize affordance",
+              copy: "Follow-up from design review, same session continuation enabled.",
+              status: "queued",
+              action: "Delete"
+            }
+          ],
+          failed:
+            state.stage === "error" || state.story === "queue"
+              ? [
+                  {
+                    title: "Retry schedule editor copy",
+                    copy: "Previous run hit a terminal reconnect gap. Prompt and attachment retained for retry.",
+                    status: "failed",
+                    action: "Retry"
+                  }
+                ]
+              : [],
+          completed: [
+            {
+              title: "Generate journey notes",
+              copy: "Completed 2m ago. Working tree now shows 3 touched files.",
+              status: "completed",
+              action: "Inspect diff"
+            }
+          ]
+        };
+      }
+
+      function getSchedules() {
+        if (state.stage === "empty") {
+          return [];
+        }
+
+        return [
+          {
+            title: "Morning UX queue digest",
+            frequency: "Weekdays · 09:00",
+            mode: "Auto",
+            model: "gpt-5.4",
+            nextRun: "Tomorrow, 09:00",
+            note: "Summarize queue, failed jobs, and latest changed files."
+          },
+          {
+            title: "Friday diff audit",
+            frequency: "Weekly · Fri",
+            mode: "Fleet",
+            model: "gemini-2.5-pro",
+            nextRun: "Fri, 16:00",
+            note: "Check working tree drift before the design review."
+          }
+        ];
+      }
+
+      function getTerminalLines() {
+        if (state.stage === "empty") {
+          return [
+            { text: "$ waiting for the first delegated task…", tone: "muted" },
+            { text: "No SSE stream yet. Create a session or queue a prompt to begin.", tone: "muted" }
+          ];
+        }
+
+        if (state.stage === "error") {
+          return [
+            { text: "$ copilot --model gpt-5.4 --resume cp_8hy2-resume --yolo -p …", tone: "muted" },
+            { text: "Connected to tmux session ux-redesign-handoff", tone: "success" },
+            { text: "warning: stream interrupted, attempting reconnect in 3s", tone: "warning" },
+            { text: "last buffered diff saved locally; you can still inspect changes", tone: "muted" },
+            { text: "retry suggested: update schedule editor copy and rerun same prompt", tone: "error" }
+          ];
+        }
+
+        return [
+          { text: "$ copilot --model gpt-5.4 --resume cp_8hy2-resume --yolo -p …", tone: "muted" },
+          { text: "Connected to tmux session ux-redesign-handoff", tone: "success" },
+          { text: "Reading docs/ux-proposals/wireframe-03-mobile-ops.html", tone: "muted" },
+          { text: "Updating desktop queue lane labels and mobile navigation hints", tone: "muted" },
+          { text: "Modified apps/web/src/components/OrchestratorPane.tsx", tone: "success" },
+          { text: "Working tree updated; open Changes to inspect the diff", tone: "success" }
+        ];
+      }
+
+      function getTerminalBanner() {
+        if (state.stage === "empty") {
+          return {
+            className: "warning",
+            title: "No stream yet",
+            copy: "The terminal area stays ready, but the first task has not started. This is the empty onboarding state."
+          };
+        }
+
+        if (state.stage === "error") {
+          return {
+            className: "error",
+            title: "SSE reconnect in progress",
+            copy: "Buffered output remains visible. Users can inspect queue and changes while the stream reconnects."
+          };
+        }
+
+        return {
+          className: "",
+          title: "Live terminal stream",
+          copy: "Output is anchored to the active session, so queue, retry, and diff actions never lose context."
+        };
+      }
+
+      function renderStoryButtons() {
+        const root = document.getElementById("storyButtons");
+        root.innerHTML = Object.entries(stories)
+          .map(
+            ([key, story]) => `
+              <button type="button" class="pill ${state.story === key ? "active" : ""}" data-action="set-story" data-story="${key}">
+                ${story.label} · ${story.title}
+              </button>
+            `
+          )
+          .join("");
+      }
+
+      function renderStageButtons() {
+        const root = document.getElementById("stageButtons");
+        root.innerHTML = Object.entries(stageMeta)
+          .map(
+            ([key, value]) => `
+              <button type="button" class="pill ${state.stage === key ? "active" : ""}" data-action="set-stage" data-stage="${key}">
+                ${value.label}
+              </button>
+            `
+          )
+          .join("");
+      }
+
+      function renderGuide() {
+        const story = stories[state.story];
+        document.getElementById("guideTitle").textContent = `${story.label} · ${story.title}`;
+        document.getElementById("guideSummary").textContent = story.summary;
+        document.getElementById("guideSteps").innerHTML = story.steps
+          .map(
+            (step, index) => `
+              <li class="guide-step">
+                <strong>${index + 1}. ${step.title}</strong>
+                <span>${step.copy}</span>
+              </li>
+            `
+          )
+          .join("");
+      }
+
+      function renderDesktop() {
+        const story = stories[state.story];
+        const sessions = getSessions();
+        const jobs = getJobs();
+        const terminalBanner = getTerminalBanner();
+        const schedules = getSchedules();
+        const selectedDiff = diffContent[state.selectedFile];
+        const activeTab = state.desktopTab;
+        const hasActiveSession = state.stage !== "empty";
+
+        document.getElementById("desktopStoryBadge").textContent = story.label;
+        document.getElementById("desktopStageBadge").textContent = stageMeta[state.stage].desktopBadge;
+
+        const desktop = `
+          <div class="desktop-preview">
+            <aside class="sidebar">
+              <div class="sidebar-top">
+                <div>
+                  <h3>Sessions</h3>
+                  <p>Quickly switch context, inspect saved continuation, and create a new session without leaving the workspace.</p>
+                </div>
+                <button type="button" class="primary-btn" data-action="open-modal" data-modal="create">New</button>
+              </div>
+
+              <section class="sidebar-block">
+                <h4>Active filters</h4>
+                <div class="chip-row">
+                  <span class="chip active">Provider resume on</span>
+                  <span class="chip">Model descriptors visible</span>
+                  <span class="chip">Execution mode pinned</span>
+                </div>
+              </section>
+
+              <section class="sidebar-block">
+                <h4>Session list</h4>
+                <div class="session-list">
+                  ${sessions
+                    .map(
+                      (session) => `
+                        <div class="session-card ${session.active ? "is-active" : ""}">
+                          <div class="session-title">
+                            <strong>${session.title}</strong>
+                            <span class="badge ${session.status === "Needs attention" ? "is-danger" : session.status === "Active" ? "is-success" : ""}">${session.status}</span>
+                          </div>
+                          <div class="session-meta">
+                            <span class="meta-pill">${session.provider}</span>
+                            <span class="meta-pill">${session.model}</span>
+                            <span class="meta-pill">${session.mode}</span>
+                          </div>
+                          <div class="job-copy">${session.note}</div>
+                          <div class="meta-pill">Resume ${session.sessionId}</div>
+                        </div>
+                      `
+                    )
+                    .join("")}
+                </div>
+              </section>
+
+              <section class="sidebar-block">
+                <h4>Session settings</h4>
+                <div class="info-grid">
+                  <div class="info-box">
+                    <strong>Provider session continuation</strong>
+                    <span>Saved default: <span class="linkish">cp_8hy2-resume</span>. Future delegated jobs keep the same CLI conversation until cleared.</span>
+                  </div>
+                  <div class="info-box">
+                    <strong>Execution command hint</strong>
+                    <span>copilot --model gpt-5.4 --resume cp_8hy2-resume --yolo -p ...</span>
+                  </div>
+                </div>
+                <div class="mini-actions" style="margin-top: 12px;">
+                  <button type="button" class="mini-btn" data-action="open-modal" data-modal="session">Edit session</button>
+                  <button type="button" class="mini-btn" data-action="desktop-tab" data-tab="schedules">Open schedules</button>
+                </div>
+              </section>
+            </aside>
+
+            <div class="resize-rail" aria-hidden="true"></div>
+
+            <section class="desktop-main">
+              <div class="topbar">
+                <div>
+                  <h3>${story.title}</h3>
+                  <p>${story.summary}</p>
+                </div>
+                <div class="badge-row">
+                  <span class="badge is-accent">${hasActiveSession ? "Resume cp_8hy2-resume" : "No active session"}</span>
+                  <span class="badge">Provider: Copilot</span>
+                  <span class="badge">${state.story === "schedule" ? "Mode: Auto" : state.story === "queue" ? "Mode: Fleet" : "Mode: Standard"}</span>
+                  <button type="button" class="mini-btn" data-action="open-modal" data-modal="palette">Command palette</button>
+                </div>
+              </div>
+
+              <div class="tabbar">
+                ${["delegate", "terminal", "queue", "changes", "schedules"]
+                  .map(
+                    (tab) => `
+                      <button type="button" class="tab ${activeTab === tab ? "active" : ""}" data-action="desktop-tab" data-tab="${tab}">
+                        ${tab[0].toUpperCase() + tab.slice(1)}
+                      </button>
+                    `
+                  )
+                  .join("")}
+              </div>
+
+              <div class="command-bar">
+                <div class="command-hint">
+                  <strong>Command palette for desktop</strong>
+                  <span>Use Cmd/Ctrl + K to switch sessions, jump to Queue or Changes, create a session, retry the latest failure, or open schedule editing without hunting through the UI.</span>
+                </div>
+                <div class="mobile-quick-actions">
+                  <span class="quick-command">Create session</span>
+                  <span class="quick-command">Go to queue</span>
+                  <span class="quick-command">Open schedule editor</span>
+                  <span class="quick-command">Retry failed job</span>
+                </div>
+              </div>
+
+              <div class="workspace">
+                <div class="desktop-pane ${activeTab === "delegate" ? "active" : ""}">
+                  <div class="split-2">
+                    <article class="workspace-card">
+                      <h4>Delegate task</h4>
+                      ${
+                        hasActiveSession
+                          ? ""
+                          : `
+                            <div class="no-session-banner">
+                              <strong>No active session selected</strong>
+                              <span>Create or select an orchestrator session first, then the delegate form targets that session's provider, model, execution mode, and terminal stream.</span>
+                            </div>
+                          `
+                      }
+                      <div class="field-grid">
+                        <div class="field-grid two">
+                          <div class="field">
+                            <label>Provider</label>
+                            <div class="select">Copilot · supports resume</div>
+                          </div>
+                          <div class="field">
+                            <label>Model</label>
+                            <div class="select">gpt-5.4 · fast reasoning for orchestration</div>
+                          </div>
+                        </div>
+
+                        <div class="field">
+                          <label>Execution mode</label>
+                          <div class="chip-row">
+                            <span class="chip ${state.story === "delegate" ? "active" : ""}">Standard</span>
+                            <span class="chip ${state.story === "queue" ? "active" : ""}">Fleet</span>
+                            <span class="chip ${state.story === "schedule" ? "active" : ""}">Auto</span>
+                          </div>
+                        </div>
+
+                        <div class="field">
+                          <label>Prompt</label>
+                          <div class="textarea">
+                            ${state.stage === "empty"
+                              ? "Describe the first delegated task. The app keeps one attachment and the provider session target together."
+                              : "Review the new Design 03 wireframe, refine queue and schedule copy, and keep the provider session continuity visible in both desktop and mobile states."}
+                          </div>
+                        </div>
+
+                        <div class="field-grid two">
+                          <div class="field">
+                            <label>Attachment</label>
+                            <div class="input">${state.stage === "empty" ? "Disabled until a session is selected" : "docs/ux-proposals/wireframe-03-mobile-ops.html"}</div>
+                            <div class="hint">Single attachment keeps the prompt grounded without overwhelming the mobile experience.</div>
+                          </div>
+                          <div class="field">
+                            <label>Delegates to</label>
+                            <div class="input">${hasActiveSession ? "UX redesign handoff · Copilot · gpt-5.4" : "No active session selected"}</div>
+                            <div class="hint">The target session is explicit, so desktop and mobile never dispatch a task to an ambiguous destination.</div>
+                          </div>
+                        </div>
+
+                        <div class="mini-actions">
+                          <button type="button" class="primary-btn" data-action="${hasActiveSession ? "desktop-tab" : "open-modal"}" data-tab="terminal" data-modal="create">${hasActiveSession ? "Delegate and watch terminal" : "Create session first"}</button>
+                          <button type="button" class="ghost-btn" data-action="open-modal" data-modal="create">Review create-session flow</button>
+                        </div>
+                      </div>
+                    </article>
+
+                    <article class="workspace-card">
+                      <h4>Session context</h4>
+                      <div class="info-grid">
+                        <div class="info-box">
+                          <strong>What the user sees before delegating</strong>
+                          <span>Project path, selected provider, model descriptor, execution mode, and the explicit target session are grouped into one task-launch surface.</span>
+                        </div>
+                        <div class="info-box">
+                          <strong>What changes on desktop</strong>
+                          <span>The resize rail keeps the session list available while the command palette accelerates cross-workspace actions.</span>
+                        </div>
+                        <div class="info-box">
+                          <strong>What changes on mobile</strong>
+                          <span>The same decision points move into a stacked flow with a bottom nav for quick return to output, changes, or settings.</span>
+                        </div>
+                      </div>
+                    </article>
+                  </div>
+                </div>
+
+                <div class="desktop-pane ${activeTab === "terminal" ? "active" : ""}">
+                  <div class="status-banner ${terminalBanner.className}">
+                    <div>
+                      <strong>${terminalBanner.title}</strong>
+                      <span>${terminalBanner.copy}</span>
+                    </div>
+                    <div class="badge-row">
+                      <span class="badge">${state.stage === "error" ? "Reconnect queued" : state.stage === "empty" ? "Idle" : "Streaming"}</span>
+                      <span class="badge">Tail: 200 lines</span>
+                      <span class="badge">History pages: 2k lines</span>
+                    </div>
+                  </div>
+
+                  <div class="split-2">
+                    <div class="terminal">
+                      <div class="terminal-top">
+                        <strong>Terminal output</strong>
+                        <div class="badge-row">
+                          <span class="badge">SSE</span>
+                          <span class="badge">tmux-backed</span>
+                        </div>
+                      </div>
+                      <div class="terminal-body">
+                        ${getTerminalLines()
+                          .map(
+                            (line) => `
+                              <div class="terminal-line ${line.tone}">${line.text}</div>
+                            `
+                          )
+                          .join("")}
+                      </div>
+                    </div>
+
+                    <article class="workspace-card">
+                      <h4>Input and history controls</h4>
+                      <div class="field-grid">
+                        <div class="field">
+                          <label>Send terminal input</label>
+                          <div class="terminal-input">${state.stage === "error" ? "Reconnect after saving output" : "continue and summarize the diff"}</div>
+                        </div>
+                        <div class="mini-actions">
+                          <button type="button" class="mini-btn">Send</button>
+                          <button type="button" class="mini-btn">Submit line</button>
+                          <button type="button" class="mini-btn">Load older output</button>
+                          <button type="button" class="mini-btn">Cancel job</button>
+                          <button type="button" class="mini-btn">New tmux</button>
+                        </div>
+                        <div class="info-box">
+                          <strong>Why it matters</strong>
+                          <span>Users can keep reading terminal output, queue status, and changes even when the SSE stream needs to reconnect.</span>
+                        </div>
+                        <div class="mini-actions">
+                          <button type="button" class="mini-btn" data-action="desktop-tab" data-tab="changes">Open changes</button>
+                          <button type="button" class="mini-btn" data-action="desktop-tab" data-tab="queue">Open queue</button>
+                        </div>
+                      </div>
+                    </article>
+                  </div>
+                </div>
+
+                <div class="desktop-pane ${activeTab === "queue" ? "active" : ""}">
+                  ${
+                    state.stage === "empty"
+                      ? `
+                        <div class="empty-state">
+                          No jobs yet. After the first delegated task, this board fills with running, queued, failed, and completed work so prioritization stays visible.
+                        </div>
+                      `
+                      : ""
+                  }
+                  <div class="queue-columns">
+                    ${[
+                      ["running", "Running", "is-success"],
+                      ["queued", "Queued", "is-warning"],
+                      ["failed", "Failed", "is-danger"],
+                      ["completed", "Completed", ""]
+                    ]
+                      .map(([key, label, badgeClass]) => {
+                        const entries = getJobs()[key];
+                        return `
+                          <section class="queue-lane">
+                            <div class="lane-heading">
+                              <strong>${label}</strong>
+                              <span class="badge ${badgeClass}">${entries.length}</span>
+                            </div>
+                            ${
+                              entries.length
+                                ? entries
+                                    .map(
+                                      (job) => `
+                                        <div class="job-card">
+                                          <div class="job-top">
+                                            <div>
+                                              <div class="job-title">${job.title}</div>
+                                              <div class="job-copy">${job.copy}</div>
+                                              <div class="session-meta" style="margin-top: 8px;">
+                                                <span class="meta-pill">Session · UX redesign handoff</span>
+                                                <span class="meta-pill">Attachment · wireframe-03-mobile-ops.html</span>
+                                              </div>
+                                            </div>
+                                            <span class="badge ${job.status === "running" ? "is-success" : job.status === "queued" ? "is-warning" : job.status === "failed" ? "is-danger" : ""}">${job.status}</span>
+                                          </div>
+                                          <div class="job-foot">
+                                            <div class="meta-pill">Resume cp_8hy2-resume</div>
+                                            <div class="mini-actions">
+                                              ${
+                                                job.action === "Retry"
+                                                  ? `<button type="button" class="mini-btn" data-action="open-modal" data-modal="retry">${job.action}</button><button type="button" class="mini-btn">Continue</button>`
+                                                  : job.status === "completed"
+                                                    ? `<button type="button" class="mini-btn">${job.action}</button><button type="button" class="mini-btn">Continue</button>`
+                                                    : `<button type="button" class="mini-btn">${job.action}</button>`
+                                              }
+                                            </div>
+                                          </div>
+                                        </div>
+                                      `
+                                    )
+                                    .join("")
+                                : `<div class="empty-state">No ${label.toLowerCase()} jobs in this state.</div>`
+                            }
+                          </section>
+                        `;
+                      })
+                      .join("")}
+                  </div>
+                </div>
+
+                <div class="desktop-pane ${activeTab === "changes" ? "active" : ""}">
+                  ${
+                    state.stage === "empty"
+                      ? `
+                        <div class="empty-state">
+                          Changed files appear here once a delegated task writes to disk. The selection stays paired with the active session so review is quick.
+                        </div>
+                      `
+                      : ""
+                  }
+                  <div class="changes-layout">
+                    <article class="workspace-card">
+                      <h4>Working tree files</h4>
+                      <div class="file-list">
+                        ${baseFiles
+                          .map(
+                            (file) => `
+                              <button type="button" class="file-item ${state.selectedFile === file.path ? "active" : ""}" data-action="select-file" data-file="${file.path}">
+                                <strong>${file.path}</strong>
+                                <small>${file.status} · ${file.note}</small>
+                              </button>
+                            `
+                          )
+                          .join("")}
+                      </div>
+                    </article>
+
+                    <div class="diff-view">
+                      <div class="diff-head">
+                        <div>
+                          <strong>${state.selectedFile}</strong>
+                          <p class="muted">Selected file diff with inline status and syntax color to make quick review viable on both large and small surfaces.</p>
+                        </div>
+                        <div class="badge-row">
+                          <span class="badge">3 hunks</span>
+                          <span class="badge">Added +4</span>
+                          <span class="badge">Removed -2</span>
+                        </div>
+                      </div>
+                      <pre class="code">${selectedDiff.join("\n")}</pre>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="desktop-pane ${activeTab === "schedules" ? "active" : ""}">
+                  ${
+                    schedules.length === 0
+                      ? `
+                        <div class="empty-state">
+                          No recurring tasks yet. The first schedule starts from the same prompt, provider, model, and execution options used in manual delegation.
+                        </div>
+                      `
+                      : `
+                        <div class="schedule-layout">
+                          <div class="workspace-card">
+                            <h4>Recurring tasks</h4>
+                            <div class="field-grid">
+                              ${schedules
+                                .map(
+                                  (schedule, index) => `
+                                    <div class="schedule-card">
+                                      <div class="schedule-header">
+                                        <div>
+                                          <strong>${schedule.title}</strong>
+                                          <div class="job-copy">${schedule.note}</div>
+                                        </div>
+                                        <span class="badge ${index === 0 ? "is-success" : ""}">${schedule.frequency}</span>
+                                      </div>
+                                      <div class="badge-row">
+                                        <span class="badge">Mode: ${schedule.mode}</span>
+                                        <span class="badge">${schedule.model}</span>
+                                        <span class="badge">Next: ${schedule.nextRun}</span>
+                                      </div>
+                                      <div class="mini-actions">
+                                        <button type="button" class="mini-btn" data-action="open-modal" data-modal="schedule">Edit</button>
+                                        <button type="button" class="mini-btn">${index === 0 ? "Pause" : "Resume"}</button>
+                                        <button type="button" class="mini-btn">Delete</button>
+                                      </div>
+                                    </div>
+                                  `
+                                )
+                                .join("")}
+                            </div>
+                          </div>
+
+                          <article class="workspace-card">
+                            <h4>Schedule editor</h4>
+                            <div class="field-grid">
+                              <div class="field">
+                                <label>Frequency</label>
+                                <div class="chip-row">
+                                  <span class="chip">Daily</span>
+                                  <span class="chip active">Weekly</span>
+                                  <span class="chip">Monthly</span>
+                                </div>
+                              </div>
+                              <div class="field">
+                                <label>Days</label>
+                                <div class="day-row">
+                                  <span class="day">M</span>
+                                  <span class="day">T</span>
+                                  <span class="day">W</span>
+                                  <span class="day active">T</span>
+                                  <span class="day active">F</span>
+                                  <span class="day">S</span>
+                                  <span class="day">S</span>
+                                </div>
+                              </div>
+                              <div class="field">
+                                <label>Prompt</label>
+                                <div class="textarea">Summarize queue health, recent failures, and working tree changes for the design review.</div>
+                              </div>
+                              <div class="field-grid two">
+                                <div class="field">
+                                  <label>Timezone</label>
+                                  <div class="select">Australia/Sydney</div>
+                                </div>
+                                <div class="field">
+                                  <label>Email delivery</label>
+                                  <div class="select">inbox@example.com</div>
+                                </div>
+                              </div>
+                              <div class="field-grid two">
+                                <div class="field">
+                                  <label>Custom agent override</label>
+                                  <div class="select">Default orchestrator agent</div>
+                                </div>
+                                <div class="field">
+                                  <label>Session inheritance</label>
+                                  <div class="select">Uses active session provider, model, and execution mode</div>
+                                </div>
+                              </div>
+                            </div>
+                          </article>
+                        </div>
+                      `
+                  }
+
+                  <article class="workspace-card">
+                    <h4>Recent schedule runs</h4>
+                    <div class="run-history">
+                      <div class="run-item">
+                        <strong>09:00 today · Success</strong>
+                        <small>Queued a review summary, attached the latest diff, and completed in 2m 11s.</small>
+                      </div>
+                      <div class="run-item">
+                        <strong>Fri 16:00 · Paused after success</strong>
+                        <small>Schedule was paused after the weekly audit completed and the email digest was delivered.</small>
+                      </div>
+                    </div>
+                  </article>
+                </div>
+              </div>
+            </section>
+          </div>
+        `;
+
+        document.getElementById("desktopRoot").innerHTML = desktop;
+      }
+
+      function renderMobile() {
+        const story = stories[state.story];
+        const jobs = getJobs();
+        const schedules = getSchedules();
+        const terminalBanner = getTerminalBanner();
+        const hasActiveSession = state.stage !== "empty";
+
+        document.getElementById("mobileStoryBadge").textContent = story.label;
+        document.getElementById("mobileStageBadge").textContent = stageMeta[state.stage].mobileBadge;
+
+        const homeView = `
+          <div class="mobile-view ${state.mobileTab === "home" ? "active" : ""}">
+            <div class="mobile-card">
+              <div class="lane-chip">Home board = mobile task queue overview</div>
+              <div class="swipe-hint">Queued work is managed from this board. Swipe a queued card left to reveal Delete, or use the inline delete action shown in this prototype.</div>
+              <div class="mobile-card">
+                <strong>Session picker</strong>
+                <div class="session-switcher">
+                  ${getSessions()
+                    .map(
+                      (session) => `
+                        <div class="session-card ${session.active ? "is-active" : ""}">
+                          <div class="session-title">
+                            <strong>${session.title}</strong>
+                            <span class="badge ${session.active ? "is-success" : ""}">${session.active ? "Selected" : "Available"}</span>
+                          </div>
+                          <div class="session-meta">
+                            <span class="meta-pill">${session.provider}</span>
+                            <span class="meta-pill">${session.model}</span>
+                            <span class="meta-pill">${session.mode}</span>
+                          </div>
+                          <div class="job-copy">${session.note}</div>
+                        </div>
+                      `
+                    )
+                    .join("")}
+                </div>
+              </div>
+              <div class="lane-stack">
+                ${[
+                  ["Running", jobs.running],
+                  ["Queued", jobs.queued],
+                  ["Failed", jobs.failed],
+                  ["Schedules", schedules.map((schedule) => ({ title: schedule.title, copy: schedule.frequency, status: "scheduled", action: "Edit" }))]
+                ]
+                  .map(
+                    ([label, entries]) => `
+                      <section class="mobile-card">
+                        <div class="lane-heading">
+                          <strong>${label}</strong>
+                          <span class="badge">${entries.length}</span>
+                        </div>
+                        ${
+                          entries.length
+                            ? entries
+                                .slice(0, 2)
+                                .map(
+                                  (entry) => `
+                                    <div class="job-card">
+                                      <div class="job-top">
+                                        <div>
+                                          <div class="job-title">${entry.title}</div>
+                                          <div class="job-copy">${entry.copy}</div>
+                                          <div class="session-meta" style="margin-top: 8px;">
+                                            <span class="meta-pill">Session · UX redesign handoff</span>
+                                            <span class="meta-pill">Resume · cp_8hy2-resume</span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div class="mini-actions">
+                                        ${
+                                          entry.action === "Retry"
+                                            ? `<button type="button" class="mini-btn" data-action="open-modal" data-modal="retry">Retry</button>`
+                                            : label === "Queued"
+                                              ? `<button type="button" class="mini-btn">Open</button><button type="button" class="mini-btn">Delete</button>`
+                                            : label === "Schedules"
+                                              ? `<button type="button" class="mini-btn" data-action="open-modal" data-modal="schedule">Edit</button><button type="button" class="mini-btn">Pause</button>`
+                                            : entry.action === "Edit"
+                                              ? `<button type="button" class="mini-btn" data-action="open-modal" data-modal="schedule">Edit</button>`
+                                              : `<button type="button" class="mini-btn">${entry.action || "Open"}</button>`
+                                        }
+                                      </div>
+                                    </div>
+                                  `
+                                )
+                                .join("")
+                            : `<div class="empty-state">No ${label.toLowerCase()} items right now.</div>`
+                        }
+                      </section>
+                    `
+                  )
+                  .join("")}
+              </div>
+            </div>
+          </div>
+        `;
+
+        const delegateView = `
+          <div class="mobile-view ${state.mobileTab === "delegate" ? "active" : ""}">
+            <div class="mobile-card">
+              <strong>Compose and delegate</strong>
+              ${
+                hasActiveSession
+                  ? `<div class="lane-chip">Delegates to UX redesign handoff · Copilot · gpt-5.4</div>`
+                  : `
+                    <div class="no-session-banner">
+                      <strong>No active session selected</strong>
+                      <span>Delegate needs an active orchestrator session. Use Create session or return Home to pick one before sending work.</span>
+                    </div>
+                  `
+              }
+              <div class="field-grid">
+                <div class="field">
+                  <label>Prompt</label>
+                  <div class="textarea">${state.stage === "empty" ? "Create or select a session first. Then this prompt composer sends work to that active session." : "Review the refreshed mobile and desktop flows, then update queue and diff messaging."}</div>
+                </div>
+                <div class="field">
+                  <label>Attachment</label>
+                  <div class="input">${state.stage === "empty" ? "Disabled until a session is active" : "docs/ux-proposals/wireframe-03-mobile-ops.html"}</div>
+                </div>
+                <div class="field-grid two">
+                  <div class="field">
+                    <label>Model</label>
+                    <div class="select">gpt-5.4</div>
+                  </div>
+                  <div class="field">
+                    <label>Mode</label>
+                    <div class="select">${state.story === "schedule" ? "Auto" : state.story === "queue" ? "Fleet" : "Standard"}</div>
+                  </div>
+                </div>
+                <div class="field">
+                  <label>Active target</label>
+                  <div class="input">${hasActiveSession ? "UX redesign handoff · Resume cp_8hy2-resume" : "No active session selected"}</div>
+                </div>
+                <div class="mini-actions">
+                  <button type="button" class="primary-btn" data-action="${hasActiveSession ? "mobile-tab" : "open-modal"}" data-tab="terminal" data-modal="create">${hasActiveSession ? "Send task" : "Create session first"}</button>
+                  <button type="button" class="ghost-btn" data-action="${hasActiveSession ? "mobile-tab" : "open-modal"}" data-tab="home" data-modal="create">${hasActiveSession ? "Back to queue board" : "Session setup"}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+
+        const terminalView = `
+          <div class="mobile-view ${state.mobileTab === "terminal" ? "active" : ""}">
+            <div class="bottom-sheet">
+              <div class="sheet-handle"></div>
+              <div class="mobile-card" style="border: 0; border-radius: 0; background: transparent;">
+                ${
+                  hasActiveSession
+                    ? ""
+                    : `
+                      <div class="no-session-banner">
+                        <strong>No active session selected</strong>
+                        <span>Terminal output belongs to the active session. Create or choose a session before opening live output.</span>
+                      </div>
+                    `
+                }
+                <div class="status-banner ${terminalBanner.className}">
+                  <div>
+                    <strong>${terminalBanner.title}</strong>
+                    <span>${terminalBanner.copy}</span>
+                  </div>
+                </div>
+                <div class="terminal">
+                  <div class="terminal-top">
+                    <strong>Terminal drawer</strong>
+                    <span class="badge">${state.stage === "error" ? "Reconnect" : state.stage === "empty" ? "Idle" : "Streaming"}</span>
+                  </div>
+                  <div class="terminal-body">
+                    ${getTerminalLines()
+                      .map(
+                        (line) => `
+                          <div class="terminal-line ${line.tone}">${line.text}</div>
+                        `
+                      )
+                      .join("")}
+                  </div>
+                </div>
+                <div class="mini-actions">
+                  <button type="button" class="mini-btn" data-action="${hasActiveSession ? "mobile-tab" : "open-modal"}" data-tab="changes" data-modal="create">${hasActiveSession ? "Open changes" : "Create session"}</button>
+                  <button type="button" class="mini-btn" data-action="mobile-tab" data-tab="home">Back to queue board</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+
+        const changesView = `
+          <div class="mobile-view ${state.mobileTab === "changes" ? "active" : ""}">
+            <div class="mobile-card">
+              <strong>Changed files</strong>
+              ${
+                state.stage === "empty"
+                  ? `<div class="no-session-banner"><strong>No active session selected</strong><span>Changes are tied to the active session. Select one from Home or create a new session before reviewing diffs.</span></div><div class="empty-state">No working tree changes yet. This view becomes the review checkpoint after the first successful run.</div>`
+                  : `
+                    <div class="file-list">
+                      ${baseFiles
+                        .map(
+                          (file) => `
+                            <button type="button" class="file-item ${state.selectedFile === file.path ? "active" : ""}" data-action="select-file" data-file="${file.path}">
+                              <strong>${file.path}</strong>
+                              <small>${file.status} · ${file.note}</small>
+                            </button>
+                          `
+                        )
+                        .join("")}
+                    </div>
+                    <div class="diff-view">
+                      <div class="diff-head">
+                        <strong>${state.selectedFile}</strong>
+                        <span class="badge">Tap a file to switch</span>
+                      </div>
+                      <pre class="code">${diffContent[state.selectedFile].join("\n")}</pre>
+                    </div>
+                  `
+              }
+            </div>
+          </div>
+        `;
+
+        const settingsView = `
+          <div class="mobile-view ${state.mobileTab === "settings" ? "active" : ""}">
+            <div class="mobile-card">
+              <strong>Session and automation settings</strong>
+              ${
+                hasActiveSession
+                  ? ""
+                  : `
+                    <div class="no-session-banner">
+                      <strong>No active session selected</strong>
+                      <span>Settings still works for global defaults, but session-specific options like continuation only appear after a session exists.</span>
+                    </div>
+                  `
+              }
+              <div class="info-grid">
+                <div class="info-box">
+                  <strong>Provider session continuation</strong>
+                  <span>Resume cp_8hy2-resume. Clear it to stop continuing the current external CLI thread.</span>
+                </div>
+                <div class="info-box">
+                  <strong>Default model and mode</strong>
+                  <span>Copilot · gpt-5.4 · ${state.story === "schedule" ? "Auto" : state.story === "queue" ? "Fleet" : "Standard"}.</span>
+                </div>
+                <div class="info-box">
+                  <strong>Schedules</strong>
+                  <span>${schedules.length ? `${schedules.length} recurring task${schedules.length === 1 ? "" : "s"} configured.` : "No recurring tasks configured yet."}</span>
+                </div>
+              </div>
+              <div class="mini-actions">
+                <button type="button" class="mini-btn" data-action="open-modal" data-modal="session">Edit session</button>
+                <button type="button" class="mini-btn" data-action="open-modal" data-modal="schedule">Open schedule editor</button>
+              </div>
+            </div>
+          </div>
+        `;
+
+        document.getElementById("mobileRoot").innerHTML = `
+          <div class="mobile-preview">
+            <div class="mobile-topbar">
+              <div>
+                <h3>Mobile Ops Board</h3>
+                <p class="muted">${story.label} · ${story.title}</p>
+              </div>
+              <span class="badge is-accent">${stageMeta[state.stage].mobileBadge}</span>
+            </div>
+
+            <div class="mobile-session">
+              <div>
+                <strong>${hasActiveSession ? "UX redesign handoff" : "No active session"}</strong>
+                <div class="muted">${hasActiveSession ? "Resume cp_8hy2-resume · Copilot · gpt-5.4" : "Create or select a session from Home before using Delegate, Terminal, or Changes."}</div>
+              </div>
+              <div class="badge-row">
+                <span class="badge">${state.story === "schedule" ? "Auto" : state.story === "queue" ? "Fleet" : "Standard"}</span>
+              </div>
+            </div>
+
+            <div class="mobile-session" style="padding-top: 10px; padding-bottom: 10px;">
+              <div class="mobile-quick-actions">
+                <button type="button" class="mini-btn" data-action="mobile-tab" data-tab="home">Queue board</button>
+                <button type="button" class="mini-btn" data-action="open-modal" data-modal="create">${hasActiveSession ? "New session" : "Create session"}</button>
+                <button type="button" class="mini-btn" data-action="open-modal" data-modal="session">${hasActiveSession ? "Session settings" : "Global defaults"}</button>
+              </div>
+            </div>
+
+            <div class="mobile-content">
+              ${homeView}
+              ${delegateView}
+              ${terminalView}
+              ${changesView}
+              ${settingsView}
+            </div>
+
+            <nav class="mobile-nav">
+              ${[
+                ["home", "Home", "H"],
+                ["delegate", "Delegate", "D"],
+                ["terminal", "Terminal", "T"],
+                ["changes", "Changes", "C"],
+                ["settings", "Settings", "S"]
+              ]
+                .map(
+                  ([tab, label, icon]) => `
+                    <button type="button" class="nav-btn ${state.mobileTab === tab ? "active" : ""}" data-action="mobile-tab" data-tab="${tab}">
+                      <span class="nav-icon">${icon}</span>
+                      <span>${label}</span>
+                    </button>
+                  `
+                )
+                .join("")}
+            </nav>
+          </div>
+        `;
+      }
+
+      function openModal(type) {
+        state.modal = type;
+        const backdrop = document.getElementById("modalBackdrop");
+        const title = document.getElementById("modalTitle");
+        const intro = document.getElementById("modalIntro");
+        const body = document.getElementById("modalBody");
+        const cta = document.getElementById("modalCta");
+
+        if (type === "palette") {
+          title.textContent = "Desktop command palette";
+          intro.textContent =
+            "Keyboard-first actions help experienced operators move through the workspace quickly without adding more always-visible controls.";
+          body.innerHTML = `
+            <div class="info-box">
+              <strong>Shortcut</strong>
+              <span>Cmd/Ctrl + K opens the palette from anywhere in desktop mode.</span>
+            </div>
+            <div class="field-grid two">
+              <div class="field">
+                <label>Quick jumps</label>
+                <div class="chip-row">
+                  <span class="chip active">Open queue</span>
+                  <span class="chip active">Open changes</span>
+                  <span class="chip">Open schedules</span>
+                  <span class="chip">Switch session</span>
+                </div>
+              </div>
+              <div class="field">
+                <label>Quick actions</label>
+                <div class="chip-row">
+                  <span class="chip active">Create session</span>
+                  <span class="chip">Retry failed job</span>
+                  <span class="chip">Open schedule editor</span>
+                  <span class="chip">Focus terminal</span>
+                </div>
+              </div>
+            </div>
+            <div class="field">
+              <label>Example query</label>
+              <div class="input">retry latest failed job in UX redesign handoff</div>
+            </div>
+          `;
+          cta.textContent = "Ship command palette";
+        } else if (type === "create") {
+          title.textContent = "Create session";
+          intro.textContent =
+            "New session setup keeps the primary flow light, but still preserves the current product capabilities: required project purpose, optional first task, and optional existing coding-agent session continuity when the user needs it.";
+          body.innerHTML = `
+            <div class="field-grid two">
+              <div class="field">
+                <label>Session title</label>
+                <div class="input">UX redesign handoff</div>
+              </div>
+              <div class="field">
+                <label>Project path</label>
+                <div class="input">/home/cmwen/dev/coding-agent-orchestrator</div>
+              </div>
+            </div>
+            <div class="info-box">
+              <strong>Duplicate-session safety</strong>
+              <span>When a matching project path and provider already exists, offer “Open latest existing session” or “Continue with previous coding-agent session ID” before creating a duplicate.</span>
+            </div>
+            <div class="field-grid two">
+              <div class="field">
+                <label>Provider</label>
+                <div class="select">Copilot</div>
+              </div>
+              <div class="field">
+                <label>Model</label>
+                <div class="select">gpt-5.4 · orchestration default</div>
+              </div>
+            </div>
+            <div class="field">
+              <label>Execution mode</label>
+              <div class="chip-row">
+                <span class="chip active">Standard</span>
+                <span class="chip">Fleet</span>
+                <span class="chip">Auto</span>
+              </div>
+            </div>
+            <div class="field">
+              <label>Project purpose</label>
+              <div class="textarea">Design-oriented orchestrator workspace for running agent tasks, reviewing diffs, and managing recurring maintenance work.</div>
+              <div class="hint">Required today. This can later inform or seed a system prompt, but it already exists as a core part of session creation.</div>
+            </div>
+            <div class="field">
+              <label>Optional project description</label>
+              <div class="textarea">Additional long-lived context for the team. Optional for now; future implementations can choose to merge this into a richer system-prompt model.</div>
+              <div class="hint">This keeps the design flexible without regressing the current required project-purpose field.</div>
+            </div>
+            <div class="field">
+              <label>Continue existing coding-agent session (optional)</label>
+              <div class="input">cp_8hy2-resume</div>
+              <div class="hint">Advanced. Keep collapsed in the final UI if you want a cleaner create flow, but preserve support for Copilot, Gemini, Codex, and OpenCode continuation.</div>
+            </div>
+            <div class="field">
+              <label>Optional first task</label>
+              <div class="textarea">Open the current wireframe, review the queue layout, and propose clearer empty-state copy.</div>
+            </div>
+          `;
+          cta.textContent = "Queue first task";
+        } else if (type === "retry") {
+          title.textContent = "Retry failed job";
+          intro.textContent =
+            "Retry keeps the original session, provider continuation, and attachment visible so the user edits only what changed.";
+          body.innerHTML = `
+            <div class="info-box">
+              <strong>Failed job</strong>
+              <span>Retry schedule editor copy · failed during an SSE reconnect. Last provider session used: cp_8hy2-resume.</span>
+            </div>
+            <div class="field">
+              <label>Retry prompt</label>
+              <div class="textarea">Keep the original wireframe, but clarify the schedule editor copy and reduce desktop queue wording.</div>
+            </div>
+            <div class="field-grid two">
+              <div class="field">
+                <label>Attachment</label>
+                <div class="input">docs/ux-proposals/wireframe-03-mobile-ops.html</div>
+              </div>
+              <div class="field">
+                <label>Target</label>
+                <div class="input">Same session · Resume cp_8hy2-resume</div>
+              </div>
+            </div>
+          `;
+          cta.textContent = "Retry in current session";
+        } else if (type === "schedule") {
+          title.textContent = "Edit schedule";
+          intro.textContent =
+            "Schedules are session-scoped automations: they add recurrence, timezone, delivery, and optional custom-agent behavior on top of the active session context.";
+          body.innerHTML = `
+            <div class="field-grid two">
+              <div class="field">
+                <label>Schedule title</label>
+                <div class="input">Morning UX queue digest</div>
+              </div>
+              <div class="field">
+                <label>Frequency</label>
+                <div class="select">Weekly · Weekdays at 09:00</div>
+              </div>
+            </div>
+            <div class="field">
+              <label>Days</label>
+              <div class="day-row">
+                <span class="day active">M</span>
+                <span class="day active">T</span>
+                <span class="day active">W</span>
+                <span class="day active">T</span>
+                <span class="day active">F</span>
+                <span class="day">S</span>
+                <span class="day">S</span>
+              </div>
+            </div>
+            <div class="field-grid two">
+              <div class="field">
+                <label>Timezone</label>
+                <div class="select">Australia/Sydney</div>
+              </div>
+              <div class="field">
+                <label>Email delivery</label>
+                <div class="select">inbox@example.com</div>
+              </div>
+            </div>
+            <div class="field-grid two">
+              <div class="field">
+                <label>Custom agent override</label>
+                <div class="select">Default orchestrator agent</div>
+              </div>
+              <div class="field">
+                <label>Session inheritance</label>
+                <div class="select">Uses session provider, model, and execution mode</div>
+              </div>
+            </div>
+            <div class="field">
+              <label>Prompt</label>
+              <div class="textarea">Summarize queue health, latest changed files, and any failed jobs that need manual attention.</div>
+            </div>
+          `;
+          cta.textContent = "Save recurring task";
+        } else {
+          title.textContent = "Session settings";
+          intro.textContent =
+            "Provider continuation is still available for an existing session, but it no longer clutters the create-session flow.";
+          body.innerHTML = `
+            <div class="field-grid two">
+              <div class="field">
+                <label>Default provider</label>
+                <div class="select">Copilot</div>
+              </div>
+              <div class="field">
+                <label>Default model</label>
+                <div class="select">gpt-5.4</div>
+              </div>
+            </div>
+            <div class="field-grid two">
+              <div class="field">
+                <label>Session title</label>
+                <div class="input">UX redesign handoff</div>
+              </div>
+              <div class="field">
+                <label>Execution mode</label>
+                <div class="select">Standard</div>
+              </div>
+            </div>
+            <div class="field-grid two">
+              <div class="field">
+                <label>Provider session ID</label>
+                <div class="input">cp_8hy2-resume</div>
+              </div>
+              <div class="field">
+                <label>Custom agent</label>
+                <div class="select">Default orchestrator agent</div>
+              </div>
+            </div>
+            <div class="info-box">
+              <strong>Continuity note</strong>
+              <span>Copilot can keep resuming the same conversation automatically. Gemini, Codex, and OpenCode can accept a pasted existing provider session ID here as well.</span>
+            </div>
+            <div class="info-box">
+              <strong>Scope of changes</strong>
+              <span>These settings apply to future delegated jobs in this session. Existing queue items keep the values they were submitted with.</span>
+            </div>
+            <div class="mini-actions">
+              <button type="button" class="mini-btn">Delete session</button>
+            </div>
+          `;
+          cta.textContent = "Save session defaults";
+        }
+
+        backdrop.classList.add("open");
+      }
+
+      function closeModal() {
+        state.modal = null;
+        document.getElementById("modalBackdrop").classList.remove("open");
+      }
+
+      function render() {
+        renderStoryButtons();
+        renderStageButtons();
+        renderGuide();
+        renderDesktop();
+        renderMobile();
+      }
+
+      document.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-action]");
+        if (!button) {
+          return;
+        }
+
+        const action = button.dataset.action;
+        if (action === "set-story") {
+          state.story = button.dataset.story;
+          state.stage = stories[state.story].defaultStage;
+          state.desktopTab = stories[state.story].desktopTab;
+          state.mobileTab = stories[state.story].mobileTab;
+          render();
+          return;
+        }
+
+        if (action === "set-stage") {
+          state.stage = button.dataset.stage;
+          render();
+          return;
+        }
+
+        if (action === "desktop-tab") {
+          state.desktopTab = button.dataset.tab;
+          render();
+          return;
+        }
+
+        if (action === "mobile-tab") {
+          state.mobileTab = button.dataset.tab;
+          render();
+          return;
+        }
+
+        if (action === "open-modal") {
+          openModal(button.dataset.modal);
+          return;
+        }
+
+        if (action === "close-modal") {
+          closeModal();
+          return;
+        }
+
+        if (action === "select-file") {
+          state.selectedFile = button.dataset.file;
+          render();
+        }
+      });
+
+      document.getElementById("modalBackdrop").addEventListener("click", (event) => {
+        if (event.target.id === "modalBackdrop") {
+          closeModal();
+        }
+      });
+
+      render();
+    </script>
+  </body>
+</html>

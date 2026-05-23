@@ -249,8 +249,8 @@ export default function App() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-  const [pendingDeleteSessionId, setPendingDeleteSessionId] = useState<
-    string | undefined
+  const [pendingDeleteSession, setPendingDeleteSession] = useState<
+    Pick<OrchestratorSession, "sessionId" | "title"> | undefined
   >();
   const [removeSessionModalOpen, setRemoveSessionModalOpen] = useState(false);
   const [removingSessions, setRemovingSessions] = useState(false);
@@ -265,6 +265,14 @@ export default function App() {
       sessions[0]
     );
   }, [selectedSessionId, sessions]);
+  const masterSession = useMemo(
+    () => sessions.find((session) => session.role === "master"),
+    [sessions]
+  );
+  const standardSessions = useMemo(
+    () => sessions.filter((session) => session.role !== "master"),
+    [sessions]
+  );
   const projectPathSuggestions = useMemo(
     () =>
       [
@@ -282,16 +290,31 @@ export default function App() {
       ),
     [selectedSession?.sessionId, sessions, theme]
   );
-  const pendingDeleteSession = useMemo(
+  const runningSessionCount = useMemo(
     () =>
-      pendingDeleteSessionId
-        ? sessions.find(
-            (session) => session.sessionId === pendingDeleteSessionId
-          )
-        : undefined,
-    [pendingDeleteSessionId, sessions]
+      standardSessions.filter((session) => session.status === "running").length,
+    [standardSessions]
   );
-
+  const activePeerSessionCount = useMemo(
+    () =>
+      standardSessions.filter(
+        (session) => session.status === "running" || !!session.activeJobId
+      ).length,
+    [standardSessions]
+  );
+  const queuedTaskCount = useMemo(
+    () =>
+      sessions.reduce(
+        (count, session) =>
+          count + session.jobs.filter((job) => job.status === "queued").length,
+        0
+      ),
+    [sessions]
+  );
+  const activeScheduleCount = useMemo(
+    () => schedules.filter((schedule) => schedule.enabled).length,
+    [schedules]
+  );
   useEffect(() => {
     void refreshAll();
   }, []);
@@ -306,6 +329,17 @@ export default function App() {
       ) {
         event.preventDefault();
         setCommandPaletteOpen((current) => !current);
+        return;
+      }
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        !event.shiftKey &&
+        !event.altKey &&
+        event.key.toLowerCase() === "m" &&
+        masterSession
+      ) {
+        event.preventDefault();
+        setSelectedSessionId(masterSession.sessionId);
       }
     };
 
@@ -313,7 +347,7 @@ export default function App() {
     return () => {
       document.removeEventListener("keydown", handleDocumentKeyDown);
     };
-  }, []);
+  }, [masterSession]);
 
   useEffect(() => {
     if (selectedSession?.sessionId) {
@@ -328,16 +362,6 @@ export default function App() {
     localStorage.setItem("coding-agent-orchestrator:theme", theme);
   }, [theme]);
 
-  useEffect(() => {
-    if (
-      pendingDeleteSessionId &&
-      !sessions.some((session) => session.sessionId === pendingDeleteSessionId)
-    ) {
-      setPendingDeleteSessionId(undefined);
-      setRemoveSessionModalOpen(false);
-    }
-  }, [pendingDeleteSessionId, sessions]);
-
   async function refreshAll() {
     setPending(true);
     setError(undefined);
@@ -351,13 +375,16 @@ export default function App() {
         ]);
       setWorkspace(workspaceSummary);
       setCapabilities(capabilitySummary);
-      setSessions(sessionList);
+      setSessions(sortOrchestratorSessions(sessionList));
       setSchedules(scheduleList);
       if (
         selectedSessionId &&
         !sessionList.some((session) => session.sessionId === selectedSessionId)
       ) {
-        setSelectedSessionId(sessionList[0]?.sessionId);
+        setSelectedSessionId(
+          sessionList.find((session) => session.role === "master")?.sessionId ??
+            sessionList[0]?.sessionId
+        );
       }
     } catch (loadError) {
       setError(errorMessage(loadError));
@@ -387,9 +414,7 @@ export default function App() {
       const without = current.filter(
         (candidate) => candidate.sessionId !== session.sessionId
       );
-      return [session, ...without].sort((left, right) =>
-        right.updatedAt.localeCompare(left.updatedAt)
-      );
+      return sortOrchestratorSessions([session, ...without]);
     });
     setSelectedSessionId(session.sessionId);
   }
@@ -404,9 +429,7 @@ export default function App() {
       const without = current.filter(
         (candidate) => candidate.sessionId !== session.sessionId
       );
-      return [session, ...without].sort((left, right) =>
-        right.updatedAt.localeCompare(left.updatedAt)
-      );
+      return sortOrchestratorSessions([session, ...without]);
     });
   }
 
@@ -420,8 +443,8 @@ export default function App() {
     setSchedules((current) =>
       current.filter((schedule) => schedule.sessionId !== sessionId)
     );
-    setPendingDeleteSessionId((current) =>
-      current === sessionId ? undefined : current
+    setPendingDeleteSession((current) =>
+      current?.sessionId === sessionId ? undefined : current
     );
     setRemoveSessionModalOpen(false);
     setSelectedSessionId((current) =>
@@ -498,27 +521,44 @@ export default function App() {
       setSelectedSessionId(undefined);
     } else if (item.actionId === "open-settings") {
       setTheme((current) => (current === "dark" ? "light" : "dark"));
+    } else if (item.actionId === "open-queue") {
+      activateWorkspaceTarget('[data-workspace-target="queue"]');
+    } else if (item.actionId === "open-terminal") {
+      activateWorkspaceTarget('[data-workspace-target="terminal"]');
+    } else if (item.actionId === "open-changes") {
+      activateWorkspaceTarget('[data-workspace-target="changes"]');
+    } else if (item.actionId === "open-schedules") {
+      activateWorkspaceTarget('[data-workspace-target="schedules"]');
+    } else if (item.actionId === "open-session-settings") {
+      activateWorkspaceTarget('[data-workspace-target="settings"]');
     } else if (item.actionId === "toggle-sidebar") {
       void refreshAll();
     } else if (item.actionId === "focus-composer") {
-      window.requestAnimationFrame(() => {
-        document
-          .querySelector<HTMLTextAreaElement>(".orchestrator-main textarea")
-          ?.focus();
-      });
+      activateWorkspaceTarget(
+        '[data-workspace-target="delegate"]',
+        ".orchestrator-delegate-input"
+      );
+    } else if (item.actionId === "focus-terminal-input") {
+      activateWorkspaceTarget(
+        '[data-workspace-target="terminal"]',
+        ".orchestrator-terminal-input"
+      );
     }
 
     setCommandPaletteOpen(false);
   }
 
-  function handleOpenRemoveSessionModal(sessionId: string) {
-    setPendingDeleteSessionId(sessionId);
+  function handleOpenRemoveSessionModal(session: OrchestratorSession) {
+    setPendingDeleteSession({
+      sessionId: session.sessionId,
+      title: session.title,
+    });
     setRemoveSessionModalOpen(true);
   }
 
   function handleCloseRemoveSessionModal() {
     setRemoveSessionModalOpen(false);
-    setPendingDeleteSessionId(undefined);
+    setPendingDeleteSession(undefined);
   }
 
   async function handleConfirmRemoveSession() {
@@ -543,50 +583,159 @@ export default function App() {
   return (
     <main className="orchestrator-app-shell">
       <aside className="orchestrator-sidebar" aria-label="Sessions">
-        <div className="orchestrator-brand">
-          <div>
-            <div className="eyebrow">Personal PWA</div>
-            <h1>Coding Agent CLI Orchestrator</h1>
+        <div className="orchestrator-sidebar-hero">
+          <div className="orchestrator-brand">
+            <div>
+              <div className="eyebrow">Design 03 Command Center</div>
+              <h1>Coding Agent CLI Orchestrator</h1>
+              <p className="orchestrator-brand-copy">
+                Queue work, watch tmux output, and manage schedules from one
+                responsive operations board.
+              </p>
+            </div>
+            <div className="orchestrator-brand-actions">
+              <button
+                className="ghost-button orchestrator-icon-button"
+                type="button"
+                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+                title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+              >
+                {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+              </button>
+              <button
+                className="ghost-button orchestrator-icon-button"
+                type="button"
+                onClick={() => setCommandPaletteOpen(true)}
+                aria-label="Open command palette"
+                aria-keyshortcuts="Control+K Meta+K"
+                title="Open command palette (Cmd/Ctrl+K)"
+              >
+                <CommandIcon />
+              </button>
+              <button
+                className="ghost-button orchestrator-icon-button"
+                type="button"
+                onClick={() => void refreshAll()}
+                disabled={pending}
+                aria-label="Refresh sessions"
+                title="Refresh sessions"
+              >
+                <RefreshIcon />
+              </button>
+            </div>
           </div>
-          <div className="orchestrator-brand-actions">
-            <button
-              className="ghost-button orchestrator-icon-button"
-              type="button"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-              title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-            >
-              {theme === "dark" ? <SunIcon /> : <MoonIcon />}
-            </button>
-            <button
-              className="ghost-button orchestrator-icon-button"
-              type="button"
-              onClick={() => setCommandPaletteOpen(true)}
-              aria-label="Open command palette"
-              aria-keyshortcuts="Control+K Meta+K"
-              title="Open command palette (Cmd/Ctrl+K)"
-            >
-              <CommandIcon />
-            </button>
-            <button
-              className="ghost-button orchestrator-icon-button"
-              type="button"
-              onClick={() => void refreshAll()}
-              disabled={pending}
-              aria-label="Refresh sessions"
-              title="Refresh sessions"
-            >
-              <RefreshIcon />
-            </button>
+          <div className="orchestrator-sidebar-overview">
+            <div className="orchestrator-sidebar-overview-card">
+              <span className="panel-caption">Sessions</span>
+              <strong>{sessions.length}</strong>
+              <small>{runningSessionCount} running now</small>
+            </div>
+            <div className="orchestrator-sidebar-overview-card">
+              <span className="panel-caption">Queued tasks</span>
+              <strong>{queuedTaskCount}</strong>
+              <small>Across every session</small>
+            </div>
+            <div className="orchestrator-sidebar-overview-card">
+              <span className="panel-caption">Schedules</span>
+              <strong>{activeScheduleCount}</strong>
+              <small>Active automations</small>
+            </div>
           </div>
         </div>
         <div className="orchestrator-sidebar-meta">
           <span>
             {capabilities?.tmuxInstalled ? "tmux ready" : "tmux missing"}
           </span>
+          <span>
+            {selectedSession
+              ? `${selectedSession.jobs.length} job${
+                  selectedSession.jobs.length === 1 ? "" : "s"
+                } in active session`
+              : "No active session selected"}
+          </span>
           <span>{workspace?.storeRoot ?? "Loading store"}</span>
         </div>
+        {selectedSession ? (
+          <section className="orchestrator-active-session-card">
+            <div className="orchestrator-active-session-header">
+              <div>
+                <div className="eyebrow">
+                  {selectedSession.role === "master"
+                    ? "Master session"
+                    : "Active session"}
+                </div>
+                <strong>{selectedSession.title}</strong>
+              </div>
+              <span className="scope-chip">
+                {selectedSession.role === "master"
+                  ? `${activePeerSessionCount} active peers`
+                  : selectedSession.status}
+              </span>
+            </div>
+            <p className="orchestrator-active-session-copy">
+              {selectedSession.projectPurpose}
+            </p>
+            <dl className="orchestrator-active-session-details">
+              <div>
+                <dt>Project</dt>
+                <dd>{selectedSession.projectPath}</dd>
+              </div>
+              <div>
+                <dt>Runtime</dt>
+                <dd>
+                  {selectedSession.cliProvider} · {selectedSession.model}
+                </dd>
+              </div>
+              <div>
+                <dt>Queue</dt>
+                <dd>
+                  {selectedSession.jobs.filter((job) => job.status === "queued")
+                    .length || 0}{" "}
+                  waiting
+                </dd>
+              </div>
+              <div>
+                <dt>Updated</dt>
+                <dd>{new Date(selectedSession.updatedAt).toLocaleString()}</dd>
+              </div>
+            </dl>
+            <div className="orchestrator-active-session-actions">
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() =>
+                  activateWorkspaceTarget('[data-workspace-target="queue"]')
+                }
+              >
+                Open queue
+              </button>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() =>
+                  activateWorkspaceTarget('[data-workspace-target="terminal"]')
+                }
+              >
+                Open terminal
+              </button>
+            </div>
+          </section>
+        ) : (
+          <section className="orchestrator-active-session-card is-empty">
+            <div className="eyebrow">Active session</div>
+            <strong>No session selected</strong>
+            <p className="orchestrator-active-session-copy">
+              Create a new orchestrator session to start the queue board and
+              terminal runtime.
+            </p>
+          </section>
+        )}
         <div className="orchestrator-sidebar-section">
+          <div className="orchestrator-sidebar-section-heading">
+            <span className="eyebrow">Start work</span>
+            <span className="panel-caption">Create or switch sessions</span>
+          </div>
           <button
             ref={(element) => {
               sessionNavRefs.current["new-session"] = element;
@@ -600,17 +749,115 @@ export default function App() {
             }}
             onKeyDown={(event) => handleSessionNavKeyDown(event, "new-session")}
           >
-            <span>New session</span>
-            <small>Start a fresh tmux-backed workspace</small>
+            <span className="orchestrator-session-link-header">
+              <span>New session</span>
+              <span className="scope-chip">Draft</span>
+            </span>
+            <small>
+              Create a fresh orchestrator session and queue the first task.
+            </small>
+            <small className="orchestrator-session-link-meta">
+              Pick a project path, runtime, and initial task.
+            </small>
           </button>
+          {!masterSession ? (
+            <button
+              className="orchestrator-session-link orchestrator-session-link-master orchestrator-master-create-link"
+              type="button"
+              onClick={() => {
+                void withRefresh(async () => {
+                  const session = await api.createOrchestratorMasterSession({
+                    title: "Master Session",
+                    projectPath:
+                      capabilities?.defaultProjectPath ??
+                      workspace?.storeRoot ??
+                      ".",
+                    projectPurpose:
+                      "Coordinate cross-session delegation across every orchestrator session.",
+                  });
+                  applySessionUpdate(session);
+                });
+              }}
+              disabled={pending}
+            >
+              <span className="orchestrator-session-link-header">
+                <span className="orchestrator-master-link-title">
+                  <MasterSessionIcon />
+                  <span>Create master session</span>
+                </span>
+                <span className="scope-chip">Control</span>
+              </span>
+              <small>Bootstrap the pinned cross-session control plane.</small>
+              <small className="orchestrator-session-link-meta">
+                Creates the single allowed master session and writes
+                master-context.md.
+              </small>
+            </button>
+          ) : null}
         </div>
+        {masterSession ? (
+          <>
+            <div className="orchestrator-session-list-meta">
+              <div className="orchestrator-sidebar-section-heading">
+                <span className="eyebrow">Master session</span>
+                <span className="panel-caption">
+                  {activePeerSessionCount} active peer
+                  {activePeerSessionCount === 1 ? "" : "s"}
+                </span>
+              </div>
+            </div>
+            <div className="orchestrator-session-list">
+              <div className="orchestrator-session-row">
+                <button
+                  ref={(element) => {
+                    sessionNavRefs.current[masterSession.sessionId] = element;
+                  }}
+                  className={`orchestrator-session-link orchestrator-session-link-master ${
+                    masterSession.sessionId === selectedSession?.sessionId
+                      ? "active"
+                      : ""
+                  }`}
+                  type="button"
+                  onClick={() => setSelectedSessionId(masterSession.sessionId)}
+                  onKeyDown={(event) =>
+                    handleSessionNavKeyDown(event, masterSession.sessionId)
+                  }
+                >
+                  <span className="orchestrator-session-link-header">
+                    <span className="orchestrator-master-link-title">
+                      <MasterSessionIcon />
+                      <span>{masterSession.title}</span>
+                    </span>
+                    <span className="scope-chip">
+                      {activePeerSessionCount} active
+                    </span>
+                  </span>
+                  <small className="orchestrator-session-link-purpose">
+                    {masterSession.projectPurpose}
+                  </small>
+                  <small className="orchestrator-session-link-meta">
+                    Control plane · {masterSession.cliProvider} ·{" "}
+                    {masterSession.model}
+                  </small>
+                  <small className="orchestrator-session-link-meta">
+                    Updated {new Date(masterSession.updatedAt).toLocaleString()}
+                  </small>
+                </button>
+              </div>
+            </div>
+          </>
+        ) : null}
         <div className="orchestrator-session-list-meta">
-          <span className="panel-caption">
-            {sessions.length} saved session{sessions.length === 1 ? "" : "s"}
-          </span>
+          <div className="orchestrator-sidebar-section-heading">
+            <span className="eyebrow">Saved sessions</span>
+            <span className="panel-caption">
+              {standardSessions.length} saved session
+              {standardSessions.length === 1 ? "" : "s"}
+            </span>
+          </div>
         </div>
         <div className="orchestrator-session-list">
-          {sessions.map((session) => (
+          {standardSessions.map((session) => (
             <div className="orchestrator-session-row" key={session.sessionId}>
               <button
                 ref={(element) => {
@@ -627,10 +874,24 @@ export default function App() {
                   handleSessionNavKeyDown(event, session.sessionId)
                 }
               >
-                <span>{session.title}</span>
+                <span className="orchestrator-session-link-header">
+                  <span>{session.title}</span>
+                  <span className="scope-chip">{session.status}</span>
+                </span>
+                <small className="orchestrator-session-link-purpose">
+                  {session.projectPurpose}
+                </small>
                 <small>
-                  {session.status} ·{" "}
-                  {new Date(session.updatedAt).toLocaleString()}
+                  Updated {new Date(session.updatedAt).toLocaleString()}
+                </small>
+                <small className="orchestrator-session-link-meta">
+                  {session.cliProvider} · {session.model} ·{" "}
+                  {executionModeLabel(session.executionMode)}
+                </small>
+                <small className="orchestrator-session-link-meta">
+                  {session.providerSessionId
+                    ? `Coding agent session ID ${session.providerSessionId}`
+                    : "Starts fresh by default"}
                 </small>
               </button>
             </div>
@@ -776,8 +1037,8 @@ export default function App() {
             });
           }}
           onDeleteSession={
-            selectedSession
-              ? () => handleOpenRemoveSessionModal(selectedSession.sessionId)
+            selectedSession && selectedSession.role !== "master"
+              ? () => handleOpenRemoveSessionModal(selectedSession)
               : undefined
           }
           onSessionUpdate={applyExistingSessionUpdate}
@@ -817,8 +1078,49 @@ export default function App() {
   );
 }
 
+function executionModeLabel(
+  mode?: OrchestratorSession["executionMode"]
+): string {
+  if (mode === "fleet") {
+    return "Fleet";
+  }
+  if (mode === "auto") {
+    return "Auto";
+  }
+  return "Standard";
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unexpected runtime error.";
+}
+
+function activateWorkspaceTarget(
+  selector: string,
+  focusSelector?: string
+): boolean {
+  const control = document.querySelector<HTMLElement>(selector);
+  if (control) {
+    control.click();
+  }
+  if (focusSelector) {
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>(focusSelector)?.focus();
+    });
+  }
+  return !!control;
+}
+
+function sortOrchestratorSessions(
+  sessions: readonly OrchestratorSession[]
+): OrchestratorSession[] {
+  return [...sessions].sort((left, right) => {
+    const roleWeight =
+      Number(right.role === "master") - Number(left.role === "master");
+    if (roleWeight !== 0) {
+      return roleWeight;
+    }
+    return right.updatedAt.localeCompare(left.updatedAt);
+  });
 }
 
 function buildOrchestratorCommandPaletteItems(
@@ -858,6 +1160,67 @@ function buildOrchestratorCommandPaletteItems(
       active: false,
     },
     {
+      id: "action:focus-terminal-input",
+      kind: "action",
+      actionId: "focus-terminal-input",
+      group: "Actions",
+      label: "Focus terminal input",
+      description: "Jump to the raw terminal input box.",
+      searchText: "focus terminal input tmux send shell",
+      active: false,
+    },
+    {
+      id: "action:open-queue",
+      kind: "action",
+      actionId: "open-queue",
+      group: "Actions",
+      label: "Open queue board",
+      description: "Jump to running, queued, failed, and completed jobs.",
+      searchText: "queue jobs running failed completed board",
+      active: false,
+    },
+    {
+      id: "action:open-terminal",
+      kind: "action",
+      actionId: "open-terminal",
+      group: "Actions",
+      label: "Open terminal",
+      description: "Jump to the tmux output workspace.",
+      searchText: "terminal tmux output logs stream",
+      active: false,
+    },
+    {
+      id: "action:open-changes",
+      kind: "action",
+      actionId: "open-changes",
+      group: "Actions",
+      label: "Open changes",
+      description: "Inspect local working tree status and diffs.",
+      searchText: "changes diff working tree files",
+      active: false,
+    },
+    {
+      id: "action:open-schedules",
+      kind: "action",
+      actionId: "open-schedules",
+      group: "Actions",
+      label: "Open schedules",
+      description: "Review recurring prompts and delivery status.",
+      searchText: "schedules recurring automation email runs",
+      active: false,
+    },
+    {
+      id: "action:open-session-settings",
+      kind: "action",
+      actionId: "open-session-settings",
+      group: "Actions",
+      label: "Open session settings",
+      description:
+        "Adjust the active session defaults for future delegated jobs.",
+      searchText: "session settings provider model mode custom agent",
+      active: false,
+    },
+    {
       id: "action:toggle-sidebar",
       kind: "action",
       actionId: "toggle-sidebar",
@@ -875,10 +1238,10 @@ function buildOrchestratorCommandPaletteItems(
     group: "Chats",
     agentId: "orchestrator",
     sessionId: session.sessionId,
-    label: session.title,
-    description: `${session.status} - ${new Date(session.updatedAt).toLocaleString()}`,
+    label: session.role === "master" ? "Master Session" : session.title,
+    description: `${session.role === "master" ? "master control plane" : session.status} - ${new Date(session.updatedAt).toLocaleString()}`,
     searchText:
-      `${session.title} ${session.projectPath} ${session.status} ${session.sessionId}`.toLowerCase(),
+      `${session.title} ${session.role ?? "standard"} ${session.projectPath} ${session.status} ${session.sessionId}`.toLowerCase(),
     active: session.sessionId === selectedSessionId,
   }));
 
@@ -937,6 +1300,17 @@ function RefreshIcon() {
       <path
         fill="currentColor"
         d="M12 5a7 7 0 0 1 6.3 3.95L20 6.75V13h-6.25l2.76-2.76A4.99 4.99 0 0 0 7 12a5 5 0 0 0 8.66 3.41l1.42 1.42A7 7 0 1 1 12 5Z"
+      />
+    </svg>
+  );
+}
+
+function MasterSessionIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M12 2.5 19.79 7v10L12 21.5 4.21 17V7L12 2.5Zm0 2.3L6.21 8.16v7.68L12 19.2l5.79-3.36V8.16L12 4.8Zm-.9 3.2h1.8v2.1H15v1.8h-2.1V14h-1.8v-2.1H9v-1.8h2.1V8Z"
       />
     </svg>
   );

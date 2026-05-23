@@ -131,11 +131,14 @@ test("shows coding agent session IDs and can reuse the previous one", async ({
     "copilot-session-123"
   );
 
-  await page
-    .locator(".orchestrator-session-row .orchestrator-session-link", {
+  const repoSupportSession = page.locator(
+    ".orchestrator-session-row .orchestrator-session-link",
+    {
       hasText: "Repo support",
-    })
-    .click();
+    }
+  );
+  await repoSupportSession.focus();
+  await repoSupportSession.press("Enter");
   await expect(
     page.getByText("Latest coding agent session ID: copilot-session-123")
   ).toBeVisible();

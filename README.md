@@ -7,6 +7,24 @@ dependency. The main implementation still uses tmux windows and panes for
 long-running delegated jobs, while sessions and schedules are saved in a new
 filesystem store.
 
+## UX model
+
+The web app now ships the responsive **Design 03** shell:
+
+- **Desktop:** session rail + command palette + workspace views for Delegate,
+  Terminal, Queue, Changes, Schedules, and session settings.
+- **Mobile:** compact session picker rail + active-session **Home** hub with
+  queue lanes, quick session switching, and bottom navigation for Delegate,
+  Terminal, Changes, and Settings.
+- **Behavior parity:** the UI preserves session-scoped delegation,
+  single attachments, tmux streaming and reconnect, queue retry/remove/continue
+  actions, working tree inspection, and schedule CRUD.
+
+Reference design artifacts:
+
+- `docs/ux-proposals/proposal-03-mobile-ops.html`
+- `docs/ux-proposals/wireframe-03-mobile-ops.html`
+
 ## Stack
 
 - pnpm workspaces
@@ -55,6 +73,7 @@ the Vite server proxies `/api` to the runtime.
 - at least one supported CLI backend:
   - `copilot`
   - `gemini`
+  - `agy` (Google Antigravity CLI)
 
 ## Local Store
 
@@ -93,9 +112,9 @@ from scratch.
 - **Copilot**: new orchestrator sessions bootstrap the first delegated job with
   a stable session name, then capture the real Copilot session ID from CLI
   output so later delegated jobs can resume the exact prior Copilot session.
-- **Gemini, Codex, OpenCode**: paste an existing provider session ID into the
-  orchestrator create/settings UI to continue that external CLI session on
-  future delegated jobs.
+- **Gemini, Codex, OpenCode, Antigravity**: paste an existing provider session ID into the
+  orchestrator create UI to continue that external CLI session on future
+  delegated jobs.
 - **Codex** continuation uses the `codex resume` flow under the hood; the other
   supported providers use their resume/session flags directly.
 - Clear the provider session ID in session settings to stop targeting a pasted

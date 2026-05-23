@@ -47,6 +47,7 @@ vi.mock("@coding-agent-orchestrator/store", async () => {
 });
 
 import {
+  buildAntigravityCommand,
   buildCopilotCommand,
   buildDelegationShellScript,
   buildMemoryAnalysisPrompt,
@@ -1121,6 +1122,30 @@ describe("buildCopilotCommand", () => {
   });
 });
 
+describe("buildAntigravityCommand", () => {
+  it("uses the Antigravity print and conversation flags", () => {
+    expect(
+      buildAntigravityCommand({
+        prompt: "Fix the flaky test",
+        promptMode: "inline",
+        providerSessionId: "conversation-123",
+      })
+    ).toBe(
+      "agy --conversation 'conversation-123' --dangerously-skip-permissions -p 'Fix the flaky test'"
+    );
+  });
+
+  it("reads file prompts from disk", () => {
+    expect(
+      buildAntigravityCommand({
+        prompt: "See file",
+        promptMode: "file",
+        promptPath: "/tmp/prompt.txt",
+      })
+    ).toBe(`agy --dangerously-skip-permissions -p "$(cat '/tmp/prompt.txt')"`);
+  });
+});
+
 describe("buildDelegationShellScript", () => {
   it("writes completion markers and notifies tmux", () => {
     const script = buildDelegationShellScript({
@@ -1144,6 +1169,27 @@ describe("buildDelegationShellScript", () => {
     expect(script).toContain("/tmp/job-1234/DONE.json");
     expect(script).toContain("extract_rate_limit_wait_seconds()");
     expect(script).toContain("Copilot rate limit detected");
+  });
+
+  it("uses the Antigravity CLI command when requested", () => {
+    const script = buildDelegationShellScript({
+      jobId: "job-1234",
+      donePath: "/tmp/job-1234/DONE.json",
+      outputPath: "/tmp/job-1234/output.log",
+      cliProvider: "antigravity",
+      model: "ignored-by-antigravity",
+      prompt: "Investigate the regression",
+      promptMode: "inline",
+      projectPurpose: "Repair regressions",
+      providerSessionId: "conversation-123",
+      executionMode: "standard",
+      tmuxTarget: "%42",
+    });
+
+    expect(script).toContain(
+      "agy --conversation 'conversation-123' --dangerously-skip-permissions -p 'Investigate the regression'"
+    );
+    expect(script).not.toContain("copilot --model");
   });
 
   it("waits for the Copilot rate limit reset before retrying", async () => {

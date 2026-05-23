@@ -101,6 +101,18 @@ export const api = {
     ),
   getOrchestratorCapabilities: () =>
     request<OrchestratorCapabilities>("/api/orchestrator/capabilities"),
+  getOrchestratorMasterSession: () =>
+    request<OrchestratorSession>("/api/orchestrator/master"),
+  createOrchestratorMasterSession: (
+    requestBody?: Partial<OrchestratorSessionCreateRequest>
+  ) =>
+    request<OrchestratorSession>("/api/orchestrator/master", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(requestBody ?? {}),
+    }),
   listOrchestratorSchedules: (sessionId?: string) =>
     request<OrchestratorSchedule[]>(
       sessionId

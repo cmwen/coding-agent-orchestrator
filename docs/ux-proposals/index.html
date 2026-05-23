@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UX Redesign Proposals - Coding Agent Orchestrator</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b1220;
+        --panel: #121b2d;
+        --muted: #8ea2c9;
+        --text: #e8eefb;
+        --accent: #70a0ff;
+        --border: #24314d;
+      }
+      body {
+        margin: 0;
+        font-family: Inter, "Segoe UI", system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .wrap {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 28px 20px 40px;
+      }
+      h1, h2, h3 { margin: 0 0 12px; }
+      p { margin: 0 0 12px; color: var(--muted); }
+      .card {
+        border: 1px solid var(--border);
+        background: var(--panel);
+        border-radius: 14px;
+        padding: 18px;
+        margin-bottom: 16px;
+      }
+      ul { margin: 0; padding-left: 18px; color: var(--muted); }
+      li { margin: 7px 0; }
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      a:hover { text-decoration: underline; }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 14px;
+      }
+      code {
+        background: #0a1120;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 1px 6px;
+        color: #c8d8ff;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>UX Review + 3 New Design Directions</h1>
+      <p>
+        This package reviews the current Orchestrator UX and proposes three
+        implementable visual/interaction directions with icon systems.
+      </p>
+
+      <section class="card">
+        <h2>Current Feature + Implementation Review</h2>
+        <ul>
+          <li><strong>Information architecture:</strong> two-column shell (session list + main pane) with heavy stacked cards in the main pane.</li>
+          <li><strong>Core strengths:</strong> robust task queue controls, schedule CRUD, live tmux stream, file-change diff panel, provider session continuity.</li>
+          <li><strong>Main UX pressure points:</strong> high cognitive load in one vertical page, low hierarchy between "monitoring" vs "authoring", and too many similarly styled actions.</li>
+          <li><strong>Mobile behavior:</strong> sidebar shifts to horizontal scroll but primary operations remain dense and form-heavy.</li>
+          <li><strong>Iconography baseline:</strong> functional mono-line icons are present, but semantic grouping (Run, Queue, Session, Safety) is not visually distinct.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Deliverables</h2>
+        <div class="grid">
+          <article class="card">
+            <h3>Design 01 - Ops Command Center</h3>
+            <p>Dense operational cockpit for power users managing many sessions/jobs.</p>
+            <p><a href="./proposal-01-command-center.html">Open proposal</a></p>
+            <p><a href="./icons-01-command-center.svg">Icon set</a></p>
+          </article>
+          <article class="card">
+            <h3>Design 02 - Focus Flow Workspace</h3>
+            <p>Guided, low-noise flow that separates setup, execution, and review.</p>
+            <p><a href="./proposal-02-focus-flow.html">Open proposal</a></p>
+            <p><a href="./icons-02-focus-flow.svg">Icon set</a></p>
+          </article>
+          <article class="card">
+            <h3>Design 03 - Responsive Ops Board</h3>
+            <p>Responsive desktop + mobile orchestration system with a desktop command palette and a mobile queue board.</p>
+            <p><a href="./proposal-03-mobile-ops.html">Open proposal</a></p>
+            <p><a href="./wireframe-03-mobile-ops.html">Open responsive wireframe</a></p>
+            <p><a href="./icons-03-mobile-ops.svg">Icon set</a></p>
+          </article>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Implementation Hand-off Files</h2>
+        <ul>
+          <li><code>ux-tokens.json</code> - shared color/spacing/type tokens.</li>
+          <li>Per-proposal HTML includes: layout map, component deltas, interaction model, icon mapping.</li>
+          <li>Design 03 now includes a browser-first responsive wireframe covering both desktop and mobile behavior.</li>
+          <li>Per-proposal SVG icon file includes reusable symbols to import into React components.</li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>

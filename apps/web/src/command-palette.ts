@@ -15,7 +15,13 @@ export type CommandPaletteActionId =
   | "new-session"
   | "open-settings"
   | "focus-composer"
-  | "toggle-sidebar";
+  | "toggle-sidebar"
+  | "open-queue"
+  | "open-terminal"
+  | "open-changes"
+  | "open-schedules"
+  | "open-session-settings"
+  | "focus-terminal-input";
 
 interface BaseCommandPaletteItem {
   id: string;

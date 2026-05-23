@@ -73,6 +73,44 @@ The web app is installable and caches static assets. GET API requests use a
 short `NetworkFirst` cache. SSE stream endpoints are excluded from service
 worker caching.
 
+## Web UX Architecture
+
+The orchestrator UI ships a responsive **Design 03** shell with desktop
+power-user navigation and a mobile queue-first board:
+
+- **Desktop**
+  - persistent session rail
+  - command palette (`Cmd/Ctrl+K`)
+  - workspace navigation for Delegate, Terminal, Queue, Changes, Schedules,
+    and Settings
+- **Mobile**
+  - compact session picker rail
+  - active-session Home hub with quick session switching
+  - Home queue board for running, queued, failed, and scheduled work
+  - Settings keeps session defaults and automation shortcuts together
+  - bottom navigation for Delegate, Terminal, Changes, and Settings
+
+### State ownership
+
+- `App.tsx` owns workspace loading, selected session persistence, theme, command
+  palette state, and API mutations.
+- `OrchestratorPane.tsx` owns session-local UI state for create/edit flows,
+  queue visibility, working tree inspection, terminal streaming, and responsive
+  workspace navigation.
+
+### Behavior parity guarantees
+
+The shipped UI keeps these behaviors intact:
+
+- selected-session gating for delegation, terminal, changes, and schedules
+- one attachment per delegated task
+- optional provider session continuation during session creation and per-task
+  override during delegation
+- tmux streaming, reconnect, load-more history, cancel, and restart
+- queue retry/remove/continue actions
+- schedule create/edit/pause/resume/delete and delivery status
+- working tree status plus structured diff inspection
+
 ## Master Session
 
 A `role: "master"` session variant that has full awareness of all peer sessions.

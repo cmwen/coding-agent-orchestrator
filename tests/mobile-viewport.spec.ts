@@ -220,9 +220,17 @@ async function measureViewportFit(page: Page) {
     const sessionList = document.querySelector(".orchestrator-session-list");
     const main = document.querySelector(".orchestrator-main");
     const heading = document.querySelector(".orchestrator-brand h1");
+    const mobileNav = document.querySelector(".orchestrator-mobile-nav");
+    const terminalPanel = document.querySelector(".terminal-shell");
     const sidebarStyle = sidebar ? window.getComputedStyle(sidebar) : null;
     const sessionListStyle = sessionList
       ? window.getComputedStyle(sessionList)
+      : null;
+    const mobileNavStyle = mobileNav
+      ? window.getComputedStyle(mobileNav)
+      : null;
+    const terminalPanelStyle = terminalPanel
+      ? window.getComputedStyle(terminalPanel)
       : null;
 
     return {
@@ -241,6 +249,17 @@ async function measureViewportFit(page: Page) {
       headingWhiteSpace: heading
         ? window.getComputedStyle(heading).whiteSpace
         : "",
+      mobileNavPosition: mobileNavStyle?.position ?? "",
+      mobileNavBottom: mobileNavStyle?.bottom ?? "",
+      mobileNavViewportGap: mobileNav
+        ? Math.round(
+            window.innerHeight - mobileNav.getBoundingClientRect().bottom
+          )
+        : -1,
+      terminalPanelDisplay: terminalPanelStyle?.display ?? "",
+      terminalPanelFlexDirection: terminalPanelStyle?.flexDirection ?? "",
+      terminalPanelClientWidth: terminalPanel?.clientWidth ?? 0,
+      terminalPanelScrollWidth: terminalPanel?.scrollWidth ?? 0,
     };
   });
 }
@@ -290,8 +309,11 @@ test.describe("mobile viewport", () => {
     ).toHaveText("Coordinated mobile fix");
     await page.getByRole("button", { name: "Session settings" }).click();
     await expect(page.getByLabel("Project name")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Create schedule" })
+    ).toBeVisible();
 
-    await page.getByRole("button", { name: "Open task queue" }).click();
+    await page.getByRole("button", { name: "Home" }).click();
     await expect(
       page.getByText("Current run plus any queued follow-up work")
     ).toBeVisible();
@@ -300,11 +322,39 @@ test.describe("mobile viewport", () => {
     expect(measurements.bodyScrollWidth).toBe(measurements.viewportWidth);
     expect(measurements.appShellScrollWidth).toBe(measurements.viewportWidth);
     await expect(
-      page.getByRole("button", { name: "Create schedule" })
-    ).toBeVisible();
-    await expect(
       page.getByRole("button", { name: "Cancel job" })
     ).toBeVisible();
+    expect(measurements.mobileNavPosition).toBe("sticky");
+    expect(measurements.mobileNavBottom).toBe("0px");
+    expect(measurements.mobileNavViewportGap).toBeGreaterThanOrEqual(0);
+
+    await page.locator(".orchestrator-main").evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+
+    const scrolledMeasurements = await measureViewportFit(page);
+    expect(
+      Math.abs(
+        scrolledMeasurements.mobileNavViewportGap -
+          measurements.mobileNavViewportGap
+      )
+    ).toBeLessThanOrEqual(2);
+
+    await page.getByRole("button", { name: "Terminal", exact: true }).click();
+    await expect(page.getByText("Send raw terminal input")).toBeVisible();
+
+    const terminalMeasurements = await measureViewportFit(page);
+    expect(terminalMeasurements.bodyScrollWidth).toBe(
+      terminalMeasurements.viewportWidth
+    );
+    expect(terminalMeasurements.appShellScrollWidth).toBe(
+      terminalMeasurements.viewportWidth
+    );
+    expect(terminalMeasurements.terminalPanelDisplay).toBe("flex");
+    expect(terminalMeasurements.terminalPanelFlexDirection).toBe("column");
+    expect(terminalMeasurements.terminalPanelScrollWidth).toBeLessThanOrEqual(
+      terminalMeasurements.terminalPanelClientWidth
+    );
   });
 });
 

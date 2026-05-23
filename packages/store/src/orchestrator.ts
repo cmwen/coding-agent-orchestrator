@@ -5,6 +5,8 @@ import type {
   AttachmentUpload,
   ChatSessionSummary,
   CopilotCustomAgent,
+  MasterBatch,
+  MasterBatchItem,
   OrchestratorExecutionMode,
   OrchestratorJob,
   OrchestratorSchedule,
@@ -20,6 +22,7 @@ import {
   copilotCustomAgentSchema,
   DEFAULT_CHAT_MODEL,
   DEFAULT_ORCHESTRATOR_CLI_PROVIDER,
+  masterBatchSchema,
   orchestratorJobSchema,
   orchestratorScheduleSchema,
   orchestratorSessionSchema,
@@ -55,6 +58,10 @@ const ORCHESTRATOR_TERMINAL_LOG = "terminal/pane.log";
 const ORCHESTRATOR_JOBS_DIRECTORY = "delegations";
 const ORCHESTRATOR_SCHEDULES_DIRECTORY = "schedules";
 const ORCHESTRATOR_SCHEDULE_FILENAME = "SCHEDULE.json";
+const ORCHESTRATOR_MASTER_BATCHES_DIRECTORY = "master-batches";
+const ORCHESTRATOR_MASTER_BATCH_FILENAME = "BATCH.json";
+const ORCHESTRATOR_MASTER_BATCH_PLAN_FILENAME = "plan.md";
+const ORCHESTRATOR_MASTER_CONTEXT_FILENAME = "master-context.md";
 const ORCHESTRATOR_SESSION_HEADER = "# Orchestrator Session: ";
 export const ORCHESTRATOR_TERMINAL_LINE_LIMIT = 2_000;
 export const ORCHESTRATOR_SESSION_TAIL_LINE_LIMIT = 200;
@@ -85,6 +92,7 @@ export interface CreateOrchestratorSessionInput {
   startedAt?: string;
   projectPath: string;
   projectPurpose: string;
+  role?: OrchestratorSession["role"];
   cliProvider?: string;
   model?: string;
   availableCustomAgents?: CopilotCustomAgent[];
@@ -107,8 +115,23 @@ export interface CreateOrchestratorJobInput {
   customAgentId?: string;
   providerSessionId?: string;
   scheduleId?: string;
+  masterBatchId?: string;
+  masterItemId?: string;
   premiumUsage?: PremiumUsage;
   submittedAt?: string;
+}
+
+export interface CreateMasterBatchInput {
+  batchId?: string;
+  createdAt?: string;
+  completedAt?: string;
+  status?: MasterBatch["status"];
+  originalPrompt: string;
+  attachmentId?: string;
+  items?: Array<
+    Omit<MasterBatchItem, "itemId" | "approval" | "status"> &
+      Partial<Pick<MasterBatchItem, "itemId" | "approval" | "status">>
+  >;
 }
 
 export interface CreateOrchestratorScheduleInput {
@@ -183,6 +206,15 @@ export async function createOrchestratorSession(
     path.basename(input.projectPath) ||
     "Orchestrator session";
   const sessionId = input.sessionId ?? sessionIdFromTitle(title, startedAt);
+  const role = input.role ?? "standard";
+  if (role === "master") {
+    const existingMaster = await findMasterSession(workspace);
+    if (existingMaster && existingMaster.sessionId !== sessionId) {
+      throw new Error(
+        `Master session already exists: ${existingMaster.sessionId}`
+      );
+    }
+  }
   const existingState = await findOrchestratorStatePath(workspace, sessionId);
   if (existingState) {
     return readOrchestratorSessionSummaryFromState(workspace, existingState);
@@ -201,6 +233,7 @@ export async function createOrchestratorSession(
   const state: StoredOrchestratorSessionState = {
     sessionId,
     agentId: ORCHESTRATOR_AGENT_ID,
+    role,
     title,
     startedAt,
     updatedAt: startedAt,
@@ -297,6 +330,8 @@ export async function createOrchestratorJob(
     jobId,
     sessionId,
     scheduleId: input.scheduleId,
+    masterBatchId: input.masterBatchId,
+    masterItemId: input.masterItemId,
     providerSessionId: input.providerSessionId?.trim() || undefined,
     prompt: input.prompt ?? "",
     promptPreview: input.promptPreview,
@@ -461,6 +496,145 @@ export async function deleteOrchestratorSchedule(
     );
   }
   await fs.rm(scheduleDirectory, { recursive: true, force: true });
+}
+
+export async function findMasterSession(
+  workspace: OrchestratorWorkspace
+): Promise<OrchestratorSessionSummary | undefined> {
+  const sessions = await listOrchestratorSessions(workspace);
+  return sessions.find((session) => session.role === "master");
+}
+
+export async function listMasterBatches(
+  workspace: OrchestratorWorkspace,
+  sessionId: string
+): Promise<MasterBatch[]> {
+  const batchesRoot = await resolveMasterBatchesRoot(workspace, sessionId);
+  if (!(await pathExists(batchesRoot))) {
+    return [];
+  }
+
+  const batchFiles = (await walkFiles(batchesRoot)).filter(
+    (filePath) => path.basename(filePath) === ORCHESTRATOR_MASTER_BATCH_FILENAME
+  );
+  const batches = await Promise.all(
+    batchFiles.map((filePath) => readMasterBatch(filePath))
+  );
+  return batches.sort((left, right) =>
+    right.createdAt.localeCompare(left.createdAt)
+  );
+}
+
+export async function getMasterBatch(
+  workspace: OrchestratorWorkspace,
+  sessionId: string,
+  batchId: string
+): Promise<MasterBatch> {
+  const batchPath = await resolveMasterBatchPath(workspace, sessionId, batchId);
+  const raw = await readOptionalFile(batchPath);
+  if (!raw) {
+    throw new Error(`Master batch not found: ${sessionId}/${batchId}`);
+  }
+  return masterBatchSchema.parse(JSON.parse(raw));
+}
+
+export async function createMasterBatch(
+  workspace: OrchestratorWorkspace,
+  sessionId: string,
+  input: CreateMasterBatchInput
+): Promise<MasterBatch> {
+  const createdAt = input.createdAt ?? new Date().toISOString();
+  const batchId =
+    input.batchId ??
+    `${compactTimestamp(createdAt)}-${randomUUID().replace(/-/g, "").slice(0, 8)}`;
+  const batch = masterBatchSchema.parse({
+    batchId,
+    createdAt,
+    completedAt: input.completedAt,
+    status: input.status ?? "planning",
+    originalPrompt: input.originalPrompt,
+    attachmentId: input.attachmentId,
+    items: (input.items ?? []).map((item, index) => ({
+      ...item,
+      itemId:
+        item.itemId ??
+        `item-${String(index + 1).padStart(2, "0")}-${randomUUID().replace(/-/g, "").slice(0, 6)}`,
+      approval: item.approval ?? "pending",
+      status: item.status ?? "pending",
+    })),
+  });
+  await writeMasterBatch(workspace, sessionId, batch);
+  return batch;
+}
+
+export async function updateMasterBatch(
+  workspace: OrchestratorWorkspace,
+  sessionId: string,
+  batchId: string,
+  updates: Partial<MasterBatch>
+): Promise<MasterBatch> {
+  const current = await getMasterBatch(workspace, sessionId, batchId);
+  const next = masterBatchSchema.parse({
+    ...current,
+    ...updates,
+    batchId: current.batchId,
+    createdAt: current.createdAt,
+  });
+  await writeMasterBatch(workspace, sessionId, next);
+  return next;
+}
+
+export async function deleteMasterBatch(
+  workspace: OrchestratorWorkspace,
+  sessionId: string,
+  batchId: string
+): Promise<void> {
+  const batchDirectory = await resolveMasterBatchDirectory(
+    workspace,
+    sessionId,
+    batchId
+  );
+  if (!(await pathExists(batchDirectory))) {
+    throw new Error(
+      `Cannot delete missing master batch: ${sessionId}/${batchId}`
+    );
+  }
+  await fs.rm(batchDirectory, { recursive: true, force: true });
+}
+
+export async function writeMasterBatchPlanMarkdown(
+  workspace: OrchestratorWorkspace,
+  sessionId: string,
+  batchId: string,
+  markdown: string
+): Promise<void> {
+  const batchDirectory = await resolveMasterBatchDirectory(
+    workspace,
+    sessionId,
+    batchId
+  );
+  await fs.mkdir(batchDirectory, { recursive: true });
+  await fs.writeFile(
+    path.join(batchDirectory, ORCHESTRATOR_MASTER_BATCH_PLAN_FILENAME),
+    ensureTrailingNewline(markdown),
+    "utf8"
+  );
+}
+
+export async function writeMasterSessionContext(
+  workspace: OrchestratorWorkspace,
+  sessionId: string,
+  markdown: string
+): Promise<void> {
+  const sessionDirectory = await resolveExistingSessionDirectory(
+    workspace,
+    sessionId
+  );
+  await fs.writeFile(
+    path.join(sessionDirectory, ORCHESTRATOR_MASTER_CONTEXT_FILENAME),
+    ensureTrailingNewline(markdown),
+    "utf8"
+  );
 }
 
 export async function readOrchestratorTerminalChunk(
@@ -790,6 +964,7 @@ async function writeOrchestratorSessionManifest(
     `${ORCHESTRATOR_SESSION_HEADER}${state.title}`,
     `Session ID: ${state.sessionId}`,
     `Agent: ${state.agentId}`,
+    `Role: ${state.role ?? "standard"}`,
     `Started: ${state.startedAt}`,
     `Project Path: ${state.projectPath}`,
     `Project Purpose: ${state.projectPurpose}`,
@@ -845,6 +1020,29 @@ async function listOrchestratorJobs(
   );
   return jobs.sort((left, right) =>
     right.submittedAt.localeCompare(left.submittedAt)
+  );
+}
+
+async function readMasterBatch(batchPath: string): Promise<MasterBatch> {
+  const raw = await fs.readFile(batchPath, "utf8");
+  return masterBatchSchema.parse(JSON.parse(raw));
+}
+
+async function writeMasterBatch(
+  workspace: OrchestratorWorkspace,
+  sessionId: string,
+  batch: MasterBatch
+): Promise<void> {
+  const batchDirectory = await resolveMasterBatchDirectory(
+    workspace,
+    sessionId,
+    batch.batchId
+  );
+  await fs.mkdir(batchDirectory, { recursive: true });
+  await fs.writeFile(
+    path.join(batchDirectory, ORCHESTRATOR_MASTER_BATCH_FILENAME),
+    `${JSON.stringify(batch, null, 2)}\n`,
+    "utf8"
   );
 }
 
@@ -1016,6 +1214,50 @@ async function findOrchestratorStatePath(
     throw new Error(`Multiple orchestrator sessions matched ${sessionId}.`);
   }
   return stateFiles[0];
+}
+
+async function resolveExistingSessionDirectory(
+  workspace: OrchestratorWorkspace,
+  sessionId: string
+): Promise<string> {
+  const statePath = await findOrchestratorStatePath(workspace, sessionId);
+  if (!statePath) {
+    throw new Error(`Orchestrator session not found: ${sessionId}`);
+  }
+  return path.dirname(statePath);
+}
+
+async function resolveMasterBatchesRoot(
+  workspace: OrchestratorWorkspace,
+  sessionId: string
+): Promise<string> {
+  const sessionDirectory = await resolveExistingSessionDirectory(
+    workspace,
+    sessionId
+  );
+  return path.join(sessionDirectory, ORCHESTRATOR_MASTER_BATCHES_DIRECTORY);
+}
+
+async function resolveMasterBatchDirectory(
+  workspace: OrchestratorWorkspace,
+  sessionId: string,
+  batchId: string
+): Promise<string> {
+  return path.join(
+    await resolveMasterBatchesRoot(workspace, sessionId),
+    batchId
+  );
+}
+
+async function resolveMasterBatchPath(
+  workspace: OrchestratorWorkspace,
+  sessionId: string,
+  batchId: string
+): Promise<string> {
+  return path.join(
+    await resolveMasterBatchDirectory(workspace, sessionId, batchId),
+    ORCHESTRATOR_MASTER_BATCH_FILENAME
+  );
 }
 
 async function findOrchestratorJobPath(

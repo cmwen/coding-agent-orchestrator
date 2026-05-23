@@ -1,6 +1,6 @@
 import * as zod_v4_core from 'zod/v4/core';
 import * as zod from 'zod';
-import { WorkspaceSummary, OrchestratorJob, AttachmentUpload, PremiumUsage, OrchestratorSchedule, CopilotCustomAgent, OrchestratorExecutionMode, OrchestratorSession, PremiumUsageTotals, OrchestratorSessionSummary, ChatSessionSummary } from '@coding-agent-orchestrator/shared';
+import { WorkspaceSummary, MasterBatch, MasterBatchItem, OrchestratorJob, AttachmentUpload, PremiumUsage, OrchestratorSchedule, OrchestratorSession, CopilotCustomAgent, OrchestratorExecutionMode, PremiumUsageTotals, OrchestratorSessionSummary, ChatSessionSummary } from '@coding-agent-orchestrator/shared';
 
 interface ResolveWorkspaceOptions {
     storeRoot?: string;
@@ -28,6 +28,10 @@ interface StoredOrchestratorJobCompletion {
 declare const storedOrchestratorSessionStateSchema: zod.ZodObject<{
     sessionId: zod.ZodString;
     agentId: zod.ZodString;
+    role: zod.ZodOptional<zod.ZodEnum<{
+        standard: "standard";
+        master: "master";
+    }>>;
     title: zod.ZodString;
     startedAt: zod.ZodString;
     updatedAt: zod.ZodString;
@@ -75,6 +79,7 @@ interface CreateOrchestratorSessionInput {
     startedAt?: string;
     projectPath: string;
     projectPurpose: string;
+    role?: OrchestratorSession["role"];
     cliProvider?: string;
     model?: string;
     availableCustomAgents?: CopilotCustomAgent[];
@@ -96,8 +101,19 @@ interface CreateOrchestratorJobInput {
     customAgentId?: string;
     providerSessionId?: string;
     scheduleId?: string;
+    masterBatchId?: string;
+    masterItemId?: string;
     premiumUsage?: PremiumUsage;
     submittedAt?: string;
+}
+interface CreateMasterBatchInput {
+    batchId?: string;
+    createdAt?: string;
+    completedAt?: string;
+    status?: MasterBatch["status"];
+    originalPrompt: string;
+    attachmentId?: string;
+    items?: Array<Omit<MasterBatchItem, "itemId" | "approval" | "status"> & Partial<Pick<MasterBatchItem, "itemId" | "approval" | "status">>>;
 }
 interface CreateOrchestratorScheduleInput {
     sessionId: string;
@@ -129,6 +145,14 @@ declare function getOrchestratorSchedule(workspace: OrchestratorWorkspace, sched
 declare function createOrchestratorSchedule(workspace: OrchestratorWorkspace, input: CreateOrchestratorScheduleInput): Promise<OrchestratorSchedule>;
 declare function updateOrchestratorSchedule(workspace: OrchestratorWorkspace, scheduleId: string, updates: Partial<OrchestratorSchedule>): Promise<OrchestratorSchedule>;
 declare function deleteOrchestratorSchedule(workspace: OrchestratorWorkspace, scheduleId: string): Promise<void>;
+declare function findMasterSession(workspace: OrchestratorWorkspace): Promise<OrchestratorSessionSummary | undefined>;
+declare function listMasterBatches(workspace: OrchestratorWorkspace, sessionId: string): Promise<MasterBatch[]>;
+declare function getMasterBatch(workspace: OrchestratorWorkspace, sessionId: string, batchId: string): Promise<MasterBatch>;
+declare function createMasterBatch(workspace: OrchestratorWorkspace, sessionId: string, input: CreateMasterBatchInput): Promise<MasterBatch>;
+declare function updateMasterBatch(workspace: OrchestratorWorkspace, sessionId: string, batchId: string, updates: Partial<MasterBatch>): Promise<MasterBatch>;
+declare function deleteMasterBatch(workspace: OrchestratorWorkspace, sessionId: string, batchId: string): Promise<void>;
+declare function writeMasterBatchPlanMarkdown(workspace: OrchestratorWorkspace, sessionId: string, batchId: string, markdown: string): Promise<void>;
+declare function writeMasterSessionContext(workspace: OrchestratorWorkspace, sessionId: string, markdown: string): Promise<void>;
 declare function readOrchestratorTerminalChunk(workspace: OrchestratorWorkspace, sessionId: string, offset: number): Promise<{
     chunk: string;
     nextOffset: number;
@@ -163,4 +187,4 @@ declare function readOptionalFile(targetPath: string): Promise<string | undefine
 declare function readDirNames(root: string): Promise<string[]>;
 declare function walkFiles(root: string): Promise<string[]>;
 
-export { type CreateOrchestratorJobInput, type CreateOrchestratorScheduleInput, type CreateOrchestratorSessionInput, IMPLEMENTATION_ORCHESTRATOR_CUSTOM_AGENT_ID, ORCHESTRATOR_AGENT_ID, ORCHESTRATOR_SESSION_TAIL_LINE_LIMIT, ORCHESTRATOR_TERMINAL_LINE_LIMIT, type OrchestratorWorkspace, type ResolveWorkspaceOptions, accumulatePremiumUsageTotals, buildOrchestratorWindowName, compactTimestamp, createOrchestratorJob, createOrchestratorSchedule, createOrchestratorSession, deleteOrchestratorJob, deleteOrchestratorSchedule, deleteOrchestratorSession, discoverCopilotCustomAgents, displayTimestamp, ensureTrailingNewline, firstParagraph, getDefaultOrchestratorCustomAgentId, getOrchestratorSchedule, getOrchestratorSession, getOrchestratorTerminalSize, isoFromCompactTimestamp, listOrchestratorSchedules, listOrchestratorSessions, normalizeAgentId, orchestratorHistoryRoot, orchestratorSchedulesRoot, pathExists, readDirNames, readOptionalFile, readOrchestratorTerminalChunk, readOrchestratorTerminalHistoryChunk, resetOrchestratorTerminalLog, resolveWorkspace, slugify, summarizeWorkspace, toOrchestratorChatSummary, toPosixRelative, updateOrchestratorJob, updateOrchestratorSchedule, updateOrchestratorSession, walkFiles, writeOrchestratorJobCompletion };
+export { type CreateMasterBatchInput, type CreateOrchestratorJobInput, type CreateOrchestratorScheduleInput, type CreateOrchestratorSessionInput, IMPLEMENTATION_ORCHESTRATOR_CUSTOM_AGENT_ID, ORCHESTRATOR_AGENT_ID, ORCHESTRATOR_SESSION_TAIL_LINE_LIMIT, ORCHESTRATOR_TERMINAL_LINE_LIMIT, type OrchestratorWorkspace, type ResolveWorkspaceOptions, accumulatePremiumUsageTotals, buildOrchestratorWindowName, compactTimestamp, createMasterBatch, createOrchestratorJob, createOrchestratorSchedule, createOrchestratorSession, deleteMasterBatch, deleteOrchestratorJob, deleteOrchestratorSchedule, deleteOrchestratorSession, discoverCopilotCustomAgents, displayTimestamp, ensureTrailingNewline, findMasterSession, firstParagraph, getDefaultOrchestratorCustomAgentId, getMasterBatch, getOrchestratorSchedule, getOrchestratorSession, getOrchestratorTerminalSize, isoFromCompactTimestamp, listMasterBatches, listOrchestratorSchedules, listOrchestratorSessions, normalizeAgentId, orchestratorHistoryRoot, orchestratorSchedulesRoot, pathExists, readDirNames, readOptionalFile, readOrchestratorTerminalChunk, readOrchestratorTerminalHistoryChunk, resetOrchestratorTerminalLog, resolveWorkspace, slugify, summarizeWorkspace, toOrchestratorChatSummary, toPosixRelative, updateMasterBatch, updateOrchestratorJob, updateOrchestratorSchedule, updateOrchestratorSession, walkFiles, writeMasterBatchPlanMarkdown, writeMasterSessionContext, writeOrchestratorJobCompletion };

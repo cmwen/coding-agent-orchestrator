@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Design 01 - Ops Command Center</title>
+    <style>
+      body { margin: 0; font-family: Inter, "Segoe UI", system-ui, sans-serif; background: #0a101c; color: #ebf1ff; }
+      .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 20px 40px; }
+      h1, h2, h3 { margin: 0 0 12px; }
+      p, li { color: #9cb1d6; }
+      .card { border: 1px solid #24314a; background: #111a2a; border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+      .layout { display: grid; grid-template-columns: 240px 1fr 320px; gap: 10px; margin-top: 10px; }
+      .cell { background: #0d1524; border: 1px dashed #35507a; border-radius: 10px; padding: 10px; min-height: 120px; font-size: 13px; color: #aecdff; }
+      .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+      .chip { padding: 6px 10px; border-radius: 999px; border: 1px solid #37548a; background: #14213a; font-size: 12px; color: #bbd1ff; }
+      a { color: #77a7ff; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Design 01: Ops Command Center</h1>
+      <p>
+        A high-density operations view for users running multiple active sessions
+        and frequent delegated jobs.
+      </p>
+
+      <section class="card">
+        <h2>Design Goals</h2>
+        <ul>
+          <li>Expose run-state, queue health, and change risk in one glance.</li>
+          <li>Reduce scroll by moving from stacked cards to persistent zones.</li>
+          <li>Prioritize quick actions: delegate, cancel, continue, retry.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Layout Blueprint</h2>
+        <div class="layout">
+          <div class="cell"><strong>Left rail</strong><br />Session groups, filters, status dots, create session.</div>
+          <div class="cell"><strong>Center stage</strong><br />Terminal + delegate composer in split pane with resizable divider.</div>
+          <div class="cell"><strong>Right inspector</strong><br />Queue timeline, schedules, local changes, duplicate alerts.</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Component Delta from Current App</h2>
+        <ul>
+          <li>Merge "Task queue" and "Recurring schedules" into tabbed inspector.</li>
+          <li>Keep session settings collapsed by default and launch as drawer.</li>
+          <li>Promote "Continue with provider session ID" to quick chips on failed/completed items.</li>
+          <li>Terminal status strip adds stream state + last heartbeat + reconnect intent.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Icon System (new)</h2>
+        <div class="chips">
+          <span class="chip">ic-ops-dashboard</span>
+          <span class="chip">ic-queue-stack</span>
+          <span class="chip">ic-terminal-live</span>
+          <span class="chip">ic-schedule-loop</span>
+          <span class="chip">ic-diff-alert</span>
+          <span class="chip">ic-session-link</span>
+          <span class="chip">ic-retry-path</span>
+          <span class="chip">ic-shield-danger</span>
+        </div>
+        <p>SVG symbols: <a href="./icons-01-command-center.svg">icons-01-command-center.svg</a></p>
+      </section>
+    </main>
+  </body>
+</html>

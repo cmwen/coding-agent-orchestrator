@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="ic-ops-dashboard" viewBox="0 0 24 24"><path d="M3 3h8v8H3zm10 0h8v5h-8zM3 13h5v8H3zm7 4h11v4H10zm3-9h8v7h-8zM9 13h2v2H9z" fill="currentColor"/></symbol>
+  <symbol id="ic-queue-stack" viewBox="0 0 24 24"><path d="M4 6h16v3H4zm2 5h14v3H6zm2 5h12v3H8z" fill="currentColor"/></symbol>
+  <symbol id="ic-terminal-live" viewBox="0 0 24 24"><path d="M3 4h18v16H3zm3 4 3 3-3 3 1.5 1.5L12 11 7.5 6.5zM13 15h5v2h-5z" fill="currentColor"/></symbol>
+  <symbol id="ic-schedule-loop" viewBox="0 0 24 24"><path d="M12 4a8 8 0 0 1 7.7 6H22l-3 4-3-4h2.6A6 6 0 1 0 18 15l1.8 1a8 8 0 1 1-7.8-12z" fill="currentColor"/></symbol>
+  <symbol id="ic-diff-alert" viewBox="0 0 24 24"><path d="m12 3 9 16H3zm0 4.8-3.2 5.7h6.4zM11 14h2v2h-2zm0-5h2v4h-2z" fill="currentColor"/></symbol>
+  <symbol id="ic-session-link" viewBox="0 0 24 24"><path d="M7 7h6v2H7a3 3 0 1 0 0 6h6v2H7a5 5 0 0 1 0-10zm4 4h2v2h-2zm2-4h4a5 5 0 0 1 0 10h-4v-2h4a3 3 0 1 0 0-6h-4z" fill="currentColor"/></symbol>
+  <symbol id="ic-retry-path" viewBox="0 0 24 24"><path d="M12 5a7 7 0 1 1-6.7 9h2.1A5 5 0 1 0 8.5 8.5L11 11H4V4l3 3a7 7 0 0 1 5-2z" fill="currentColor"/></symbol>
+  <symbol id="ic-shield-danger" viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5.2 3.4 10 8 11 4.6-1 8-5.8 8-11V5zm-1 5h2v7h-2zm0 8h2v2h-2z" fill="currentColor"/></symbol>
+</svg>

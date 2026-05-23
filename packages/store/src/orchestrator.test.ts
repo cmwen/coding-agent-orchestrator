@@ -4,12 +4,15 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildOrchestratorWindowName,
+  createMasterBatch,
   createOrchestratorJob,
   createOrchestratorSession,
   deleteOrchestratorJob,
   deleteOrchestratorSession,
   discoverCopilotCustomAgents,
+  findMasterSession,
   getDefaultOrchestratorCustomAgentId,
+  getMasterBatch,
   getOrchestratorSession,
   IMPLEMENTATION_ORCHESTRATOR_CUSTOM_AGENT_ID,
   ORCHESTRATOR_SESSION_TAIL_LINE_LIMIT,
@@ -17,6 +20,7 @@ import {
   resolveWorkspace,
   toOrchestratorChatSummary,
   updateOrchestratorSession,
+  writeMasterBatchPlanMarkdown,
   writeOrchestratorJobCompletion,
 } from "./index.js";
 
@@ -434,6 +438,108 @@ describe("orchestrator session persistence", () => {
     expect(olderChunk.chunk).toContain("line 1");
     expect(olderChunk.chunk).toContain("line 300");
     expect(olderChunk.chunk).not.toContain("line 301");
+  });
+
+  it("enforces a single master session", async () => {
+    const root = await createStoreFixture();
+    const workspace = await resolveWorkspace({
+      storeRoot: root,
+      copilotConfigDir: path.join(root, ".copilot-home"),
+    });
+
+    const master = await createOrchestratorSession(workspace, {
+      title: "Master Session",
+      projectPath: root,
+      projectPurpose: "Coordinate the workspace",
+      role: "master",
+      tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      tmuxWindowName: "orchestrator-master-a1b2",
+      tmuxPaneId: "%50",
+      startedAt: "2026-03-20T12:00:00Z",
+    });
+
+    await expect(
+      createOrchestratorSession(workspace, {
+        title: "Another Master",
+        projectPath: root,
+        projectPurpose: "Duplicate master",
+        role: "master",
+        tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+        tmuxWindowName: "orchestrator-master-b2c3",
+        tmuxPaneId: "%51",
+        startedAt: "2026-03-20T12:01:00Z",
+      })
+    ).rejects.toThrow(/Master session already exists/i);
+
+    await expect(findMasterSession(workspace)).resolves.toMatchObject({
+      sessionId: master.sessionId,
+      role: "master",
+    });
+  });
+
+  it("persists master batches and plan markdown", async () => {
+    const root = await createStoreFixture();
+    const workspace = await resolveWorkspace({
+      storeRoot: root,
+      copilotConfigDir: path.join(root, ".copilot-home"),
+    });
+    const master = await createOrchestratorSession(workspace, {
+      title: "Master Session",
+      projectPath: root,
+      projectPurpose: "Coordinate the workspace",
+      role: "master",
+      tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+      tmuxWindowName: "orchestrator-master-a1b2",
+      tmuxPaneId: "%50",
+      startedAt: "2026-03-20T12:00:00Z",
+    });
+
+    const batch = await createMasterBatch(workspace, master.sessionId, {
+      originalPrompt: "Ship the UX rework across runtime, store, and web.",
+      status: "awaiting-approval",
+      items: [
+        {
+          sessionId: "runtime-session",
+          sessionTitle: "Runtime",
+          prompt: "Add master endpoints.",
+          confidence: "high",
+          reason: "Runtime owns the API.",
+        },
+      ],
+    });
+    await writeMasterBatchPlanMarkdown(
+      workspace,
+      master.sessionId,
+      batch.batchId,
+      "# Delegation Plan\n\n- Runtime: Add master endpoints.\n"
+    );
+
+    const storedBatch = await getMasterBatch(
+      workspace,
+      master.sessionId,
+      batch.batchId
+    );
+    const planMarkdown = await readFile(
+      path.join(
+        master.sessionDirectory,
+        "master-batches",
+        batch.batchId,
+        "plan.md"
+      ),
+      "utf8"
+    );
+
+    expect(storedBatch).toMatchObject({
+      batchId: batch.batchId,
+      status: "awaiting-approval",
+    });
+    expect(storedBatch.items[0]).toMatchObject({
+      sessionId: "runtime-session",
+      approval: "pending",
+      status: "pending",
+    });
+    expect(planMarkdown).toContain("Delegation Plan");
+    expect(planMarkdown).toContain("Runtime: Add master endpoints.");
   });
 });
 

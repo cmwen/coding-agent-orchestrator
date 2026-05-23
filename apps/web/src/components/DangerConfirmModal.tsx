@@ -20,6 +20,7 @@ export function DangerConfirmModal(props: DangerConfirmModalProps) {
       open={props.open}
       title={props.title}
       description={props.description}
+      closeOnScrimClick={false}
       onClose={props.busy ? () => undefined : props.onClose}
     >
       {props.details?.length ? (

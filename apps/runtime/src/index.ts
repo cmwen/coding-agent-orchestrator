@@ -2,6 +2,8 @@ import { type FSWatcher, promises as fs, watch } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
+  MasterBatchCreateRequest,
+  MasterBatchUpdateRequest,
   OrchestratorDelegateRequest,
   OrchestratorScheduleCreateRequest,
   OrchestratorScheduleUpdateRequest,
@@ -15,6 +17,8 @@ import type {
   WorkspaceSummary,
 } from "@coding-agent-orchestrator/shared";
 import {
+  masterBatchCreateSchema,
+  masterBatchUpdateSchema,
   orchestratorDelegateRequestSchema,
   orchestratorScheduleCreateSchema,
   orchestratorScheduleUpdateSchema,
@@ -77,6 +81,16 @@ app.get("/api/orchestrator/capabilities", async (context) => {
   return context.json(await orchestrator.getCapabilities());
 });
 
+app.get("/api/orchestrator/master", async (context) => {
+  return context.json(await orchestrator.getMasterSession());
+});
+
+app.post("/api/orchestrator/master", async (context) => {
+  const rawBody = await readOptionalJson(context);
+  const request = orchestratorSessionCreateSchema.partial().parse(rawBody);
+  return context.json(await orchestrator.bootstrapMasterSession(request));
+});
+
 app.get("/api/orchestrator/sessions", async (context) => {
   return context.json(await orchestrator.listSessions());
 });
@@ -93,6 +107,63 @@ app.get("/api/orchestrator/sessions/:sessionId", async (context) => {
     await orchestrator.getSession(context.req.param("sessionId"))
   );
 });
+
+app.get("/api/orchestrator/sessions/:sessionId/batches", async (context) => {
+  return context.json(
+    await orchestrator.listSessionBatches(context.req.param("sessionId"))
+  );
+});
+
+app.post("/api/orchestrator/sessions/:sessionId/batches", async (context) => {
+  const request = masterBatchCreateSchema.parse(
+    (await context.req.json()) satisfies MasterBatchCreateRequest
+  );
+  return context.json(
+    await orchestrator.createSessionBatch(
+      context.req.param("sessionId"),
+      request
+    )
+  );
+});
+
+app.get(
+  "/api/orchestrator/sessions/:sessionId/batches/:batchId",
+  async (context) => {
+    return context.json(
+      await orchestrator.getSessionBatch(
+        context.req.param("sessionId"),
+        context.req.param("batchId")
+      )
+    );
+  }
+);
+
+app.patch(
+  "/api/orchestrator/sessions/:sessionId/batches/:batchId",
+  async (context) => {
+    const request = masterBatchUpdateSchema.parse(
+      (await context.req.json()) satisfies MasterBatchUpdateRequest
+    );
+    return context.json(
+      await orchestrator.updateSessionBatch(
+        context.req.param("sessionId"),
+        context.req.param("batchId"),
+        request
+      )
+    );
+  }
+);
+
+app.delete(
+  "/api/orchestrator/sessions/:sessionId/batches/:batchId",
+  async (context) => {
+    await orchestrator.deleteSessionBatch(
+      context.req.param("sessionId"),
+      context.req.param("batchId")
+    );
+    return context.json({ ok: true });
+  }
+);
 
 app.patch("/api/orchestrator/sessions/:sessionId", async (context) => {
   const request = orchestratorSessionUpdateSchema.parse(
@@ -474,6 +545,16 @@ function buildSessionSignal(
     activeJobId: session.activeJobId,
     lastJobId: session.lastJobId,
   });
+}
+
+async function readOptionalJson(
+  context: Context<{ Bindings: HttpBindings }>
+): Promise<unknown> {
+  const body = await context.req.text();
+  if (!body.trim()) {
+    return {};
+  }
+  return JSON.parse(body) as unknown;
 }
 
 async function serveWebRequest(

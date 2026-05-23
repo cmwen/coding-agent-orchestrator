@@ -20,6 +20,7 @@ interface ModalProps {
   title: string;
   description?: string;
   className?: string;
+  closeOnScrimClick?: boolean;
   onClose: () => void;
   children: ReactNode;
 }
@@ -95,7 +96,8 @@ export function Modal(props: ModalProps) {
         type="button"
         className="modal-scrim"
         aria-label={`Close ${props.title}`}
-        onClick={props.onClose}
+        onClick={props.closeOnScrimClick === false ? undefined : props.onClose}
+        disabled={props.closeOnScrimClick === false}
       />
       <div
         ref={panelRef}

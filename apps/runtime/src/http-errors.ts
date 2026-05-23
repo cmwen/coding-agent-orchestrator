@@ -1,4 +1,4 @@
-type HttpErrorStatus = 400 | 404 | 500;
+type HttpErrorStatus = 400 | 404 | 409 | 500;
 
 export function getHttpErrorStatus(error: unknown): HttpErrorStatus {
   if (isZodLikeError(error) || error instanceof SyntaxError) {
@@ -8,6 +8,9 @@ export function getHttpErrorStatus(error: unknown): HttpErrorStatus {
   const message = getErrorMessage(error).toLowerCase();
   if (isMissingResourceError(message)) {
     return 404;
+  }
+  if (isConflictError(message)) {
+    return 409;
   }
   return 500;
 }
@@ -50,5 +53,13 @@ function isMissingResourceError(message: string): boolean {
     message.includes("missing schedule") ||
     message.includes("missing agent") ||
     message.includes("missing resource")
+  );
+}
+
+function isConflictError(message: string): boolean {
+  return (
+    message.includes("already exists") ||
+    message.includes("conflict") ||
+    message.includes("duplicate master")
   );
 }

@@ -1205,6 +1205,12 @@ p {
   gap: 0.75rem;
 }
 
+.terminal-frequent-command-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
 .empty-panel {
   padding: 1rem;
   border: 1px dashed var(--border-strong);
@@ -1868,12 +1874,12 @@ p {
   padding-top: 0.35rem;
 }
 
-.orchestrator-mobile-home-hub {
+.orchestrator-mobile-queue-overview {
   display: grid;
   gap: 0.85rem;
 }
 
-.orchestrator-mobile-home-primary,
+.orchestrator-mobile-queue-summary,
 .orchestrator-mobile-session-switcher {
   display: grid;
   gap: 0.75rem;
@@ -1883,18 +1889,18 @@ p {
   background: color-mix(in srgb, var(--card-bg) 88%, transparent);
 }
 
-.orchestrator-mobile-home-meta {
+.orchestrator-mobile-queue-meta {
   display: grid;
   gap: 0.35rem;
   color: var(--text-muted);
   font-size: 0.84rem;
 }
 
-.orchestrator-mobile-home-meta span {
+.orchestrator-mobile-queue-meta span {
   overflow-wrap: anywhere;
 }
 
-.orchestrator-mobile-home-actions,
+.orchestrator-mobile-queue-actions,
 .orchestrator-mobile-session-switcher-list {
   display: flex;
   gap: 0.65rem;
@@ -1903,7 +1909,7 @@ p {
   scrollbar-gutter: stable;
 }
 
-.orchestrator-mobile-home-actions > button {
+.orchestrator-mobile-queue-actions > button {
   white-space: nowrap;
 }
 
@@ -2976,6 +2982,15 @@ p {
     width: 100%;
   }
 
+  .terminal-frequent-command-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .terminal-frequent-command-row > button {
+    width: 100%;
+  }
+
   .message-bubble {
     max-width: 100%;
   }
@@ -3284,6 +3299,29 @@ p {
   background: color-mix(in srgb, var(--card-strong) 90%, transparent);
 }
 
+.orchestrator-session-link-master {
+  border-color: color-mix(
+    in srgb,
+    var(--orchestrator-from) 38%,
+    var(--sidebar-border, var(--border-soft))
+  );
+  background:
+    radial-gradient(
+      circle at top right,
+      color-mix(in srgb, var(--orchestrator-from) 14%, transparent) 0%,
+      transparent 38%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--card-strong) 96%, transparent) 0%,
+      color-mix(in srgb, var(--orchestrator-muted) 66%, var(--card-bg)) 100%
+    );
+}
+
+.orchestrator-master-create-link {
+  border-style: dashed;
+}
+
 .orchestrator-session-list-meta {
   padding: 0 0.2rem;
 }
@@ -3357,6 +3395,18 @@ p {
   gap: 0.75rem;
 }
 
+.orchestrator-master-link-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.orchestrator-master-link-title svg {
+  width: 1rem;
+  height: 1rem;
+  color: var(--text-accent);
+}
+
 .orchestrator-session-link-header .scope-chip {
   flex: 0 0 auto;
 }
@@ -3367,6 +3417,10 @@ p {
 
 .orchestrator-session-link-meta {
   display: block;
+}
+
+.orchestrator-master-origin-chip {
+  width: fit-content;
 }
 
 .orchestrator-main {
@@ -3475,7 +3529,7 @@ p {
   }
 
   .orchestrator-main {
-    padding: 12px;
+    padding: 12px 12px calc(88px + env(safe-area-inset-bottom));
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
@@ -3491,6 +3545,13 @@ p {
 
   .orchestrator-workspace-panel[data-mobile-visible="true"] {
     display: flex;
+  }
+
+  .orchestrator-workspace-panel.terminal-shell[data-mobile-visible="true"] {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    width: 100%;
   }
 
   .orchestrator-workspace-panel.orchestrator-control-grid[data-mobile-visible="true"] {
@@ -3515,7 +3576,11 @@ p {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 0.5rem;
-    padding: 0.85rem 0 0;
+    z-index: 6;
+    margin-top: 0.25rem;
+    padding: 0.85rem 0 calc(0.35rem + env(safe-area-inset-bottom));
+    border-top: 1px solid
+      color-mix(in srgb, var(--border-soft) 85%, transparent);
     background: linear-gradient(
       180deg,
       color-mix(in srgb, var(--page-bg-end) 0%, transparent) 0%,
@@ -3546,8 +3611,14 @@ p {
     transition: background 120ms ease;
   }
 
+  .mobile-workspace-tab .mobile-nav-icon svg {
+    width: 1rem;
+    height: 1rem;
+  }
+
   .mobile-workspace-tab.is-active .mobile-nav-icon {
     background: var(--primary-to);
+    color: var(--text-on-accent);
   }
 
   .orchestrator-mobile-session-switcher-header,

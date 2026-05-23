@@ -284,6 +284,7 @@ var orchestratorExecutionModeSchema = z.enum([
   "fleet",
   "auto"
 ]);
+var orchestratorSessionRoleSchema = z.enum(["standard", "master"]);
 var orchestratorWorkingTreeStateSchema = z.enum([
   "clean",
   "dirty",
@@ -373,10 +374,55 @@ var copilotCustomAgentSchema = z.object({
   description: z.string(),
   path: z.string().min(1)
 });
+var masterBatchConfidenceSchema = z.enum(["high", "medium", "low"]);
+var masterBatchApprovalSchema = z.enum([
+  "pending",
+  "approved",
+  "edited",
+  "skipped"
+]);
+var masterBatchItemStatusSchema = z.enum([
+  "pending",
+  "queued",
+  "running",
+  "completed",
+  "failed",
+  "skipped"
+]);
+var masterBatchStatusSchema = z.enum([
+  "planning",
+  "awaiting-approval",
+  "dispatched",
+  "done",
+  "cancelled"
+]);
+var masterBatchItemSchema = z.object({
+  itemId: z.string().min(1),
+  sessionId: z.string().min(1),
+  sessionTitle: z.string().min(1).optional(),
+  jobId: z.string().min(1).optional(),
+  prompt: z.string().min(1),
+  confidence: masterBatchConfidenceSchema,
+  reason: z.string().min(1),
+  approval: masterBatchApprovalSchema,
+  editedPrompt: z.string().min(1).optional(),
+  status: masterBatchItemStatusSchema
+});
+var masterBatchSchema = z.object({
+  batchId: z.string().min(1),
+  createdAt: z.string().min(1),
+  completedAt: z.string().min(1).optional(),
+  status: masterBatchStatusSchema,
+  originalPrompt: z.string().min(1),
+  attachmentId: z.string().min(1).optional(),
+  items: z.array(masterBatchItemSchema).default([])
+});
 var orchestratorJobSchema = z.object({
   jobId: z.string().min(1),
   sessionId: z.string().min(1),
   scheduleId: z.string().min(1).optional(),
+  masterBatchId: z.string().min(1).optional(),
+  masterItemId: z.string().min(1).optional(),
   providerSessionId: z.string().min(1).optional(),
   prompt: z.string().optional(),
   promptPreview: z.string().min(1),
@@ -396,6 +442,7 @@ var orchestratorJobSchema = z.object({
 var orchestratorSessionSummarySchema = z.object({
   sessionId: z.string().min(1),
   agentId: z.string().min(1),
+  role: orchestratorSessionRoleSchema.optional(),
   title: z.string().min(1),
   startedAt: z.string().min(1),
   updatedAt: z.string().min(1),
@@ -433,6 +480,7 @@ var orchestratorCapabilitiesSchema = z.object({
   geminiInstalled: z.boolean().optional(),
   codexInstalled: z.boolean().optional(),
   opencodeInstalled: z.boolean().optional(),
+  antigravityInstalled: z.boolean().optional(),
   defaultCliProvider: z.string().min(1).optional(),
   cliProviders: z.array(orchestratorCliProviderDescriptorSchema).optional(),
   tmuxSessionName: z.string().min(1),
@@ -645,6 +693,7 @@ var orchestratorSessionCreateSchema = z.object({
   title: z.string().min(1).optional(),
   projectPath: z.string().min(1),
   projectPurpose: z.string().min(1),
+  role: orchestratorSessionRoleSchema.optional(),
   cliProvider: z.string().min(1).optional(),
   model: z.string().min(1).default(DEFAULT_CHAT_MODEL),
   selectedCustomAgentId: z.string().trim().min(1).nullable().optional(),
@@ -664,6 +713,28 @@ var orchestratorDelegateRequestSchema = z.object({
   customAgentId: z.string().trim().min(1).nullable().optional(),
   providerSessionId: z.string().trim().min(1).regex(/^[a-zA-Z0-9_\-.:]+$/, "Invalid session ID format").optional(),
   attachment: attachmentUploadSchema.optional()
+});
+var masterBatchCreateSchema = z.object({
+  status: masterBatchStatusSchema.default("planning"),
+  originalPrompt: z.string().min(1),
+  attachmentId: z.string().min(1).optional(),
+  items: z.array(
+    masterBatchItemSchema.omit({
+      itemId: true,
+      approval: true,
+      status: true
+    }).extend({
+      approval: masterBatchApprovalSchema.optional(),
+      status: masterBatchItemStatusSchema.optional()
+    })
+  ).default([])
+});
+var masterBatchUpdateSchema = z.object({
+  completedAt: z.string().min(1).optional(),
+  status: masterBatchStatusSchema.optional(),
+  originalPrompt: z.string().min(1).optional(),
+  attachmentId: z.string().min(1).nullable().optional(),
+  items: z.array(masterBatchItemSchema).optional()
 });
 var orchestratorTerminalInputSchema = z.object({
   input: z.string(),
@@ -797,6 +868,14 @@ export {
   llmRequestStatsSchema,
   llmSessionStatsSchema,
   llmTokenDetailSchema,
+  masterBatchApprovalSchema,
+  masterBatchConfidenceSchema,
+  masterBatchCreateSchema,
+  masterBatchItemSchema,
+  masterBatchItemStatusSchema,
+  masterBatchSchema,
+  masterBatchStatusSchema,
+  masterBatchUpdateSchema,
   mcpServerConfigSchema,
   memoryAnalysisEntryChangeSchema,
   memoryAnalysisRequestSchema,
@@ -823,6 +902,7 @@ export {
   orchestratorScheduleSchema,
   orchestratorScheduleUpdateSchema,
   orchestratorSessionCreateSchema,
+  orchestratorSessionRoleSchema,
   orchestratorSessionSchema,
   orchestratorSessionStatusSchema,
   orchestratorSessionSummarySchema,

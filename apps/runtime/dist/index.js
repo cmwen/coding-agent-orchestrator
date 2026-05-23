@@ -1,8 +1,10 @@
 // src/index.ts
-import { promises as fs2 } from "fs";
+import { promises as fs2, watch } from "fs";
 import path2 from "path";
 import { fileURLToPath } from "url";
 import {
+  masterBatchCreateSchema,
+  masterBatchUpdateSchema,
   orchestratorDelegateRequestSchema,
   orchestratorScheduleCreateSchema,
   orchestratorScheduleUpdateSchema,
@@ -63,6 +65,9 @@ function getHttpErrorStatus(error) {
   if (isMissingResourceError(message)) {
     return 404;
   }
+  if (isConflictError(message)) {
+    return 409;
+  }
   return 500;
 }
 function getHttpErrorMessage(error) {
@@ -85,6 +90,9 @@ function getErrorMessage(error) {
 function isMissingResourceError(message) {
   return message.includes("not found") || message.includes("missing session") || message.includes("missing task") || message.includes("missing schedule") || message.includes("missing agent") || message.includes("missing resource");
 }
+function isConflictError(message) {
+  return message.includes("already exists") || message.includes("conflict") || message.includes("duplicate master");
+}
 
 // src/orchestrator.ts
 import { execFile as execFileCallback } from "child_process";
@@ -102,17 +110,22 @@ import {
 import {
   accumulatePremiumUsageTotals,
   buildOrchestratorWindowName,
+  createMasterBatch,
   createOrchestratorJob,
   createOrchestratorSchedule,
   createOrchestratorSession,
+  deleteMasterBatch,
   deleteOrchestratorJob,
   deleteOrchestratorSchedule,
   deleteOrchestratorSession,
   discoverCopilotCustomAgents,
+  findMasterSession,
   getDefaultOrchestratorCustomAgentId,
+  getMasterBatch,
   getOrchestratorSchedule,
   getOrchestratorSession,
   getOrchestratorTerminalSize,
+  listMasterBatches,
   listOrchestratorSchedules,
   listOrchestratorSessions,
   ORCHESTRATOR_AGENT_ID,
@@ -123,9 +136,12 @@ import {
   readOrchestratorTerminalHistoryChunk,
   resetOrchestratorTerminalLog,
   toOrchestratorChatSummary,
+  updateMasterBatch,
   updateOrchestratorJob,
   updateOrchestratorSchedule,
   updateOrchestratorSession,
+  writeMasterBatchPlanMarkdown,
+  writeMasterSessionContext,
   writeOrchestratorJobCompletion
 } from "@coding-agent-orchestrator/store";
 var execFile = promisify(execFileCallback);
@@ -186,11 +202,21 @@ var OPENCODE_CLI_PROVIDER = {
     supportsExecutionMode: false
   }
 };
+var ANTIGRAVITY_CLI_PROVIDER = {
+  id: "antigravity",
+  displayName: "Google Antigravity CLI",
+  description: "Runs delegated jobs through the Google Antigravity CLI inside the tmux workspace.",
+  capabilities: {
+    supportsCustomAgents: false,
+    supportsExecutionMode: false
+  }
+};
 var ORCHESTRATOR_CLI_PROVIDERS = [
   COPILOT_CLI_PROVIDER,
   GEMINI_CLI_PROVIDER,
   CODEX_CLI_PROVIDER,
-  OPENCODE_CLI_PROVIDER
+  OPENCODE_CLI_PROVIDER,
+  ANTIGRAVITY_CLI_PROVIDER
 ];
 var VALID_PROVIDER_SESSION_ID_RE = /^[a-zA-Z0-9_\-.:]+$/;
 function normalizeProviderSessionId(value) {
@@ -208,7 +234,7 @@ function normalizeProviderSessionId(value) {
   return normalized;
 }
 function supportsProviderSessionResume(cliProvider) {
-  return cliProvider === COPILOT_CLI_PROVIDER.id || cliProvider === GEMINI_CLI_PROVIDER.id || cliProvider === CODEX_CLI_PROVIDER.id || cliProvider === OPENCODE_CLI_PROVIDER.id;
+  return cliProvider === COPILOT_CLI_PROVIDER.id || cliProvider === GEMINI_CLI_PROVIDER.id || cliProvider === CODEX_CLI_PROVIDER.id || cliProvider === OPENCODE_CLI_PROVIDER.id || cliProvider === ANTIGRAVITY_CLI_PROVIDER.id;
 }
 function supportsProviderSessionBootstrap(cliProvider) {
   return cliProvider === COPILOT_CLI_PROVIDER.id;
@@ -253,6 +279,7 @@ var TmuxOrchestratorService = class {
       geminiInstalled,
       codexInstalled,
       opencodeInstalled,
+      antigravityInstalled,
       sessions
     ] = await Promise.all([
       this.commandExists("tmux"),
@@ -260,6 +287,7 @@ var TmuxOrchestratorService = class {
       this.commandExists("gemini"),
       this.commandExists("codex"),
       this.commandExists("opencode"),
+      this.commandExists("agy"),
       listOrchestratorSessions(this.workspace)
     ]);
     const recentProjectPaths = [
@@ -270,6 +298,7 @@ var TmuxOrchestratorService = class {
       if (provider.id === "gemini") return geminiInstalled;
       if (provider.id === "codex") return codexInstalled;
       if (provider.id === "opencode") return opencodeInstalled;
+      if (provider.id === "antigravity") return antigravityInstalled;
       return false;
     });
     return orchestratorCapabilitiesSchema.parse({
@@ -281,6 +310,7 @@ var TmuxOrchestratorService = class {
       geminiInstalled,
       codexInstalled,
       opencodeInstalled,
+      antigravityInstalled,
       defaultCliProvider: cliProviders[0]?.id ?? DEFAULT_ORCHESTRATOR_CLI_PROVIDER,
       cliProviders,
       tmuxSessionName: this.tmuxSessionName,
@@ -295,7 +325,7 @@ var TmuxOrchestratorService = class {
       id: ORCHESTRATOR_AGENT_ID,
       kind: "orchestrator",
       title: "CLI Orchestrator",
-      description: "Maximizes project context, then delegates implementation work to Copilot or Gemini CLI sessions inside tmux windows.",
+      description: "Maximizes project context, then delegates implementation work to supported CLI sessions inside tmux windows.",
       combinedPrompt: "You are the built-in Copilot orchestrator agent. Maximize the available project context, keep delegated session state current, and route implementation work through specialized Copilot custom agents instead of doing everything in one generic run.",
       agentPath: path.join(this.workspace.agentsRoot, ORCHESTRATOR_AGENT_ID),
       defaultSoulPath: path.join(
@@ -334,6 +364,81 @@ var TmuxOrchestratorService = class {
     const reconciled = await this.reconcileSession(session);
     return getOrchestratorSession(this.workspace, reconciled.sessionId);
   }
+  async getMasterSession() {
+    const session = await findMasterSession(this.workspace);
+    if (!session) {
+      throw new Error("Master session not found.");
+    }
+    return this.getSession(session.sessionId);
+  }
+  async bootstrapMasterSession(request = {}) {
+    const existingMaster = await findMasterSession(this.workspace);
+    if (existingMaster) {
+      await this.refreshMasterContext(existingMaster.sessionId);
+      return this.getSession(existingMaster.sessionId);
+    }
+    return this.createSession({
+      title: request.title?.trim() || "Master Session",
+      projectPath: request.projectPath?.trim() || this.defaultProjectPath,
+      projectPurpose: request.projectPurpose?.trim() || "Coordinate cross-session delegation across every orchestrator session.",
+      role: "master",
+      cliProvider: request.cliProvider,
+      model: request.model ?? DEFAULT_CHAT_MODEL,
+      selectedCustomAgentId: request.selectedCustomAgentId,
+      providerSessionId: request.providerSessionId,
+      executionMode: request.executionMode,
+      prompt: request.prompt
+    });
+  }
+  async listSessionBatches(sessionId) {
+    return listMasterBatches(this.workspace, sessionId);
+  }
+  async getSessionBatch(sessionId, batchId) {
+    return getMasterBatch(this.workspace, sessionId, batchId);
+  }
+  async createSessionBatch(sessionId, request) {
+    const session = await this.getSession(sessionId);
+    if (session.role !== "master") {
+      throw new Error(
+        `Orchestrator session ${sessionId} is not a master session.`
+      );
+    }
+    const batch = await createMasterBatch(this.workspace, sessionId, request);
+    await writeMasterBatchPlanMarkdown(
+      this.workspace,
+      sessionId,
+      batch.batchId,
+      renderMasterBatchPlanMarkdown(session, batch)
+    );
+    return batch;
+  }
+  async updateSessionBatch(sessionId, batchId, request) {
+    const batch = await updateMasterBatch(this.workspace, sessionId, batchId, {
+      ...request,
+      attachmentId: request.attachmentId === null ? void 0 : request.attachmentId
+    });
+    const session = await this.getSession(sessionId);
+    await writeMasterBatchPlanMarkdown(
+      this.workspace,
+      sessionId,
+      batch.batchId,
+      renderMasterBatchPlanMarkdown(session, batch)
+    );
+    return batch;
+  }
+  async deleteSessionBatch(sessionId, batchId) {
+    await deleteMasterBatch(this.workspace, sessionId, batchId);
+  }
+  async refreshMasterContext(sessionId) {
+    const master = sessionId != null ? await this.getSession(sessionId) : await this.getMasterSession();
+    const sessions = await listOrchestratorSessions(this.workspace);
+    const peerSessions = sessions.filter(
+      (session) => session.sessionId !== master.sessionId
+    );
+    const markdown = renderMasterContextMarkdown(master, peerSessions);
+    await writeMasterSessionContext(this.workspace, master.sessionId, markdown);
+    return markdown;
+  }
   async getSessionChanges(sessionId) {
     const session = await getOrchestratorSession(this.workspace, sessionId);
     return this.readWorkingTree(session.projectPath);
@@ -343,6 +448,15 @@ var TmuxOrchestratorService = class {
     return this.readWorkingTreeDiff(session.projectPath, filePath);
   }
   async createSession(request) {
+    const role = request.role ?? "standard";
+    if (role === "master") {
+      const existingMaster = await findMasterSession(this.workspace);
+      if (existingMaster) {
+        throw new Error(
+          `Master session already exists: ${existingMaster.sessionId}`
+        );
+      }
+    }
     const cliProvider = this.normalizeCliProvider(request.cliProvider);
     await this.assertCapabilities(cliProvider);
     const projectPath = path.resolve(request.projectPath);
@@ -384,6 +498,7 @@ var TmuxOrchestratorService = class {
       startedAt,
       projectPath,
       projectPurpose: request.projectPurpose,
+      role,
       cliProvider,
       model,
       availableCustomAgents,
@@ -395,6 +510,9 @@ var TmuxOrchestratorService = class {
       tmuxPaneId: paneId,
       status: "idle"
     });
+    if (role === "master") {
+      await this.refreshMasterContext(sessionId);
+    }
     if (request.prompt) {
       await this.delegate(sessionId, request.prompt);
     }
@@ -852,6 +970,11 @@ var TmuxOrchestratorService = class {
         "The `opencode` CLI is required for Opencode-backed orchestrator sessions."
       );
     }
+    if (cliProvider === ANTIGRAVITY_CLI_PROVIDER.id && !capabilities.antigravityInstalled) {
+      throw new Error(
+        "The `agy` CLI is required for Google Antigravity-backed orchestrator sessions."
+      );
+    }
   }
   async commandExists(command) {
     try {
@@ -1032,6 +1155,8 @@ var TmuxOrchestratorService = class {
     if (normalized === CODEX_CLI_PROVIDER.id) return CODEX_CLI_PROVIDER.id;
     if (normalized === OPENCODE_CLI_PROVIDER.id)
       return OPENCODE_CLI_PROVIDER.id;
+    if (normalized === ANTIGRAVITY_CLI_PROVIDER.id)
+      return ANTIGRAVITY_CLI_PROVIDER.id;
     return COPILOT_CLI_PROVIDER.id;
   }
   async finalizeCancelledJob(sessionId, jobId, completedAt, sessionUpdates) {
@@ -1461,6 +1586,11 @@ function buildDelegationShellScript(input) {
     promptMode: input.promptMode,
     promptPath: input.promptPath,
     providerSessionId: input.providerSessionId
+  }) : cliProvider === ANTIGRAVITY_CLI_PROVIDER.id ? buildAntigravityCommand({
+    prompt: input.prompt,
+    promptMode: input.promptMode,
+    promptPath: input.promptPath,
+    providerSessionId: input.providerSessionId
   }) : buildCopilotCommand({
     model: input.model,
     prompt: input.prompt,
@@ -1652,6 +1782,17 @@ function buildOpencodeCommand(input) {
   return `opencode run --model ${shellQuote(input.model)}${providerSessionFlag} -p ${shellQuote(
     input.prompt
   )}`;
+}
+function buildAntigravityCommand(input) {
+  const providerSessionFlag = input.providerSessionId ? ` --conversation ${shellQuote(input.providerSessionId)}` : "";
+  const yoloFlag = " --dangerously-skip-permissions";
+  if (input.promptMode === "file") {
+    if (!input.promptPath) {
+      throw new Error("Prompt file mode requires a promptPath.");
+    }
+    return `agy${providerSessionFlag}${yoloFlag} -p "$(cat ${shellQuote(input.promptPath)})"`;
+  }
+  return `agy${providerSessionFlag}${yoloFlag} -p ${shellQuote(input.prompt)}`;
 }
 function buildPromptWithAttachmentContext(storeRoot, prompt, attachment) {
   const trimmedPrompt = prompt.trim();
@@ -2012,6 +2153,64 @@ function ensureTrailingNewline(value) {
   return value.endsWith("\n") ? value : `${value}
 `;
 }
+function renderMasterContextMarkdown(masterSession, peerSessions) {
+  const rows = peerSessions.length > 0 ? peerSessions.map(
+    (session) => `| ${session.sessionId} | ${session.title} | ${session.projectPath} | ${session.projectPurpose} | ${session.status} |`
+  ).join("\n") : "| _none_ | _No peer sessions available_ | - | - | - |";
+  return ensureTrailingNewline(
+    [
+      "# Master Orchestrator Context",
+      "",
+      `Master session: ${masterSession.title} (${masterSession.sessionId})`,
+      `Project path: ${masterSession.projectPath}`,
+      `Purpose: ${masterSession.projectPurpose}`,
+      "",
+      "## Known Sessions",
+      "",
+      "| ID | Title | Project Path | Purpose | Status |",
+      "| --- | --- | --- | --- | --- |",
+      rows,
+      "",
+      "## Your Job",
+      "",
+      "1. Read each peer session's purpose and current state.",
+      "2. Draft a delegation plan before dispatching any work.",
+      "3. Persist the plan into master batch files before queueing jobs.",
+      "4. Avoid dispatching work back to the master session itself."
+    ].join("\n")
+  );
+}
+function renderMasterBatchPlanMarkdown(session, batch) {
+  return ensureTrailingNewline(
+    [
+      `# Delegation Plan: ${batch.batchId}`,
+      "",
+      `Master Session: ${session.title} (${session.sessionId})`,
+      `Status: ${batch.status}`,
+      `Created: ${batch.createdAt}`,
+      ...batch.completedAt ? [`Completed: ${batch.completedAt}`] : [],
+      "",
+      "## Original Prompt",
+      "",
+      batch.originalPrompt,
+      "",
+      "## Items",
+      "",
+      ...batch.items.length > 0 ? batch.items.map(
+        (item, index) => [
+          `${index + 1}. ${item.sessionTitle ?? item.sessionId}`,
+          `   - Session ID: ${item.sessionId}`,
+          `   - Confidence: ${item.confidence}`,
+          `   - Approval: ${item.approval}`,
+          `   - Status: ${item.status}`,
+          `   - Prompt: ${item.editedPrompt ?? item.prompt}`,
+          `   - Reason: ${item.reason}`,
+          ...item.jobId ? [`   - Job ID: ${item.jobId}`] : []
+        ].join("\n")
+      ) : ["No plan items have been persisted yet."]
+    ].join("\n")
+  );
+}
 function slugify(value) {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "session";
 }
@@ -2320,6 +2519,8 @@ function ensureTimeZone(timezone, from) {
 var workspace = await resolveWorkspace();
 var defaultProjectPath = process.cwd();
 var ORCHESTRATOR_TERMINAL_PAGE_LINE_LIMIT = 2e3;
+var ORCHESTRATOR_STATE_FILENAME = "ORCHESTRATOR.json";
+var ORCHESTRATOR_TERMINAL_LOG_FILENAME = "pane.log";
 var orchestrator = new TmuxOrchestratorService(workspace, defaultProjectPath);
 var scheduleService = new OrchestratorScheduleService(
   workspace,
@@ -2349,6 +2550,14 @@ app.get("/api/orchestrator/agent", async (context) => {
 app.get("/api/orchestrator/capabilities", async (context) => {
   return context.json(await orchestrator.getCapabilities());
 });
+app.get("/api/orchestrator/master", async (context) => {
+  return context.json(await orchestrator.getMasterSession());
+});
+app.post("/api/orchestrator/master", async (context) => {
+  const rawBody = await readOptionalJson(context);
+  const request = orchestratorSessionCreateSchema.partial().parse(rawBody);
+  return context.json(await orchestrator.bootstrapMasterSession(request));
+});
 app.get("/api/orchestrator/sessions", async (context) => {
   return context.json(await orchestrator.listSessions());
 });
@@ -2363,6 +2572,58 @@ app.get("/api/orchestrator/sessions/:sessionId", async (context) => {
     await orchestrator.getSession(context.req.param("sessionId"))
   );
 });
+app.get("/api/orchestrator/sessions/:sessionId/batches", async (context) => {
+  return context.json(
+    await orchestrator.listSessionBatches(context.req.param("sessionId"))
+  );
+});
+app.post("/api/orchestrator/sessions/:sessionId/batches", async (context) => {
+  const request = masterBatchCreateSchema.parse(
+    await context.req.json()
+  );
+  return context.json(
+    await orchestrator.createSessionBatch(
+      context.req.param("sessionId"),
+      request
+    )
+  );
+});
+app.get(
+  "/api/orchestrator/sessions/:sessionId/batches/:batchId",
+  async (context) => {
+    return context.json(
+      await orchestrator.getSessionBatch(
+        context.req.param("sessionId"),
+        context.req.param("batchId")
+      )
+    );
+  }
+);
+app.patch(
+  "/api/orchestrator/sessions/:sessionId/batches/:batchId",
+  async (context) => {
+    const request = masterBatchUpdateSchema.parse(
+      await context.req.json()
+    );
+    return context.json(
+      await orchestrator.updateSessionBatch(
+        context.req.param("sessionId"),
+        context.req.param("batchId"),
+        request
+      )
+    );
+  }
+);
+app.delete(
+  "/api/orchestrator/sessions/:sessionId/batches/:batchId",
+  async (context) => {
+    await orchestrator.deleteSessionBatch(
+      context.req.param("sessionId"),
+      context.req.param("batchId")
+    );
+    return context.json({ ok: true });
+  }
+);
 app.patch("/api/orchestrator/sessions/:sessionId", async (context) => {
   const request = orchestratorSessionUpdateSchema.parse(
     await context.req.json()
@@ -2532,14 +2793,22 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 }
 async function streamOrchestratorTerminal(context, sessionId) {
   const initialSession = await orchestrator.getSession(sessionId);
+  const terminalDirectory = path2.join(
+    initialSession.sessionDirectory,
+    "terminal"
+  );
+  const sessionDirectory = initialSession.sessionDirectory;
   const { incoming, outgoing } = context.env;
   let closed = false;
   let busy = false;
+  let pendingTick = false;
   let offset = Number.parseInt(context.req.query("offset") ?? "0", 10);
   if (!Number.isFinite(offset) || offset < 0) {
     offset = 0;
   }
   let lastSessionSignal = buildSessionSignal(initialSession);
+  let pollingInterval;
+  const watchers = [];
   const sendEvent = (event, data) => {
     if (closed) {
       return;
@@ -2567,8 +2836,24 @@ async function streamOrchestratorTerminal(context, sessionId) {
       nextOffset: initialSession.logSize
     });
   }
+  const shouldPollWhileStreaming = (session) => session.status === "running" || !!session.activeJobId;
+  const syncPollingState = (session) => {
+    const shouldPoll = shouldPollWhileStreaming(session);
+    if (shouldPoll && !pollingInterval) {
+      pollingInterval = setInterval(() => {
+        void requestTick();
+      }, 1e3);
+      pollingInterval.unref?.();
+      return;
+    }
+    if (!shouldPoll && pollingInterval) {
+      clearInterval(pollingInterval);
+      pollingInterval = void 0;
+    }
+  };
   const tick = async () => {
     if (closed || busy) {
+      pendingTick = true;
       return;
     }
     busy = true;
@@ -2584,6 +2869,7 @@ async function streamOrchestratorTerminal(context, sessionId) {
         lastSessionSignal = nextSessionSignal;
         sendEvent("session", session);
       }
+      syncPollingState(session);
       sendEvent("heartbeat", {
         offset,
         status: session.status
@@ -2595,17 +2881,60 @@ async function streamOrchestratorTerminal(context, sessionId) {
       cleanup();
     } finally {
       busy = false;
+      if (!closed && pendingTick) {
+        pendingTick = false;
+        queueMicrotask(() => {
+          void tick();
+        });
+      }
     }
   };
-  const interval = setInterval(() => {
+  const requestTick = () => {
+    pendingTick = true;
     void tick();
-  }, 1e3);
+  };
+  const watchDirectory = (directoryPath, fileName, onMatch) => {
+    try {
+      const watcher = watch(
+        directoryPath,
+        { persistent: false },
+        (event, name) => {
+          if (event !== "change" && event !== "rename") {
+            return;
+          }
+          if (!name || name.toString() !== fileName) {
+            return;
+          }
+          onMatch();
+        }
+      );
+      watchers.push(watcher);
+    } catch (error) {
+      if (!isNodeError(error) || error.code !== "ENOENT") {
+        throw error;
+      }
+    }
+  };
+  watchDirectory(terminalDirectory, ORCHESTRATOR_TERMINAL_LOG_FILENAME, () => {
+    requestTick();
+  });
+  watchDirectory(sessionDirectory, ORCHESTRATOR_STATE_FILENAME, () => {
+    requestTick();
+  });
+  syncPollingState(initialSession);
+  requestTick();
   const cleanup = () => {
     if (closed) {
       return;
     }
     closed = true;
-    clearInterval(interval);
+    for (const watcher of watchers) {
+      watcher.close();
+    }
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+      pollingInterval = void 0;
+    }
     outgoing.end();
   };
   incoming.on("close", cleanup);
@@ -2618,6 +2947,13 @@ function buildSessionSignal(session) {
     activeJobId: session.activeJobId,
     lastJobId: session.lastJobId
   });
+}
+async function readOptionalJson(context) {
+  const body = await context.req.text();
+  if (!body.trim()) {
+    return {};
+  }
+  return JSON.parse(body);
 }
 async function serveWebRequest(context, requestPath) {
   if (requestPath.startsWith("/api/")) {

@@ -287,4 +287,52 @@ describe("App", () => {
       )
     );
   });
+
+  it("pins the master session above standard sessions", async () => {
+    sessionStore.current = [
+      {
+        sessionId: "master-session",
+        agentId: "copilot-orchestrator",
+        role: "master",
+        title: "Master Session",
+        startedAt: "2026-05-01T11:00:00Z",
+        updatedAt: "2026-05-01T12:10:00Z",
+        summary: "Coordinate the workspace",
+        projectPath: "/tmp/master",
+        projectPurpose: "Coordinate the workspace",
+        cliProvider: "copilot",
+        model: "gpt-5-mini",
+        tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+        tmuxWindowName: "master-window",
+        tmuxPaneId: "%99",
+        status: "idle",
+        activeJobId: undefined,
+        lastJobId: undefined,
+        availableCustomAgents: [],
+        selectedCustomAgentId: undefined,
+        executionMode: "standard",
+        sessionDirectory: "/tmp/master-session",
+        manifestPath: "/tmp/master-session/SESSION.md",
+        jobs: [],
+        terminalTail: "",
+        logSize: 0,
+      },
+      ...sessionStore.current,
+    ];
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("orchestrator-pane-mode").textContent
+      ).toContain("new-session")
+    );
+
+    expect(
+      screen.getByRole("button", { name: /Master Session/i })
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Existing session/i })
+    ).toBeTruthy();
+  });
 });
