@@ -341,10 +341,10 @@ describe("App", () => {
     );
 
     expect(
-      screen.getByRole("button", { name: /Master Session/i })
+      await screen.findByRole("button", { name: /Master Session/i })
     ).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: /Existing session/i })
+      await screen.findByRole("button", { name: /Existing session/i })
     ).toBeTruthy();
   });
 
