@@ -354,6 +354,35 @@ var orchestratorWorkingTreeDiffSchema = z.object({
   structured: orchestratorStructuredDiffSchema.optional(),
   message: z.string().min(1).optional()
 });
+var orchestratorRepositoryEntryKindSchema = z.enum([
+  "file",
+  "directory"
+]);
+var orchestratorRepositoryEntrySchema = z.object({
+  path: z.string().min(1),
+  name: z.string().min(1),
+  kind: orchestratorRepositoryEntryKindSchema,
+  size: z.number().int().nonnegative().optional()
+});
+var orchestratorRepositoryDirectorySchema = z.object({
+  projectPath: z.string().min(1),
+  path: z.string(),
+  parentPath: z.string().optional(),
+  entries: z.array(orchestratorRepositoryEntrySchema).default([])
+});
+var orchestratorRepositoryFileStateSchema = z.enum([
+  "ready",
+  "binary"
+]);
+var orchestratorRepositoryFileSchema = z.object({
+  state: orchestratorRepositoryFileStateSchema,
+  projectPath: z.string().min(1),
+  path: z.string().min(1),
+  size: z.number().int().nonnegative(),
+  content: z.string(),
+  truncated: z.boolean().default(false),
+  message: z.string().min(1).optional()
+});
 var orchestratorScheduleFrequencySchema = z.enum([
   "daily",
   "weekly",
@@ -896,6 +925,11 @@ export {
   orchestratorJobSchema,
   orchestratorJobStatusSchema,
   orchestratorPromptModeSchema,
+  orchestratorRepositoryDirectorySchema,
+  orchestratorRepositoryEntryKindSchema,
+  orchestratorRepositoryEntrySchema,
+  orchestratorRepositoryFileSchema,
+  orchestratorRepositoryFileStateSchema,
   orchestratorScheduleCreateSchema,
   orchestratorScheduleDayOfWeekSchema,
   orchestratorScheduleFrequencySchema,

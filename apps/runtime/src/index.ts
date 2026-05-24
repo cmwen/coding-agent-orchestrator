@@ -5,6 +5,8 @@ import type {
   MasterBatchCreateRequest,
   MasterBatchUpdateRequest,
   OrchestratorDelegateRequest,
+  OrchestratorRepositoryDirectory,
+  OrchestratorRepositoryFile,
   OrchestratorScheduleCreateRequest,
   OrchestratorScheduleUpdateRequest,
   OrchestratorSession,
@@ -20,6 +22,8 @@ import {
   masterBatchCreateSchema,
   masterBatchUpdateSchema,
   orchestratorDelegateRequestSchema,
+  orchestratorRepositoryDirectorySchema,
+  orchestratorRepositoryFileSchema,
   orchestratorScheduleCreateSchema,
   orchestratorScheduleUpdateSchema,
   orchestratorSessionCreateSchema,
@@ -203,6 +207,35 @@ app.get(
       )) satisfies OrchestratorWorkingTreeDiff
     );
     return context.json(diff);
+  }
+);
+
+app.get("/api/orchestrator/sessions/:sessionId/files", async (context) => {
+  const directoryPath = context.req.query("path")?.trim() || undefined;
+  const listing = orchestratorRepositoryDirectorySchema.parse(
+    (await orchestrator.getSessionFiles(
+      context.req.param("sessionId"),
+      directoryPath
+    )) satisfies OrchestratorRepositoryDirectory
+  );
+  return context.json(listing);
+});
+
+app.get(
+  "/api/orchestrator/sessions/:sessionId/files/content",
+  async (context) => {
+    const filePath = context.req.query("path")?.trim();
+    if (!filePath) {
+      return context.json({ error: "File path is required." }, 400);
+    }
+
+    const file = orchestratorRepositoryFileSchema.parse(
+      (await orchestrator.getSessionFile(
+        context.req.param("sessionId"),
+        filePath
+      )) satisfies OrchestratorRepositoryFile
+    );
+    return context.json(file);
   }
 );
 

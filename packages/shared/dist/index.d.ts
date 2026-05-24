@@ -996,6 +996,54 @@ declare const orchestratorWorkingTreeDiffSchema: z.ZodObject<{
     message: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
 type OrchestratorWorkingTreeDiff = z.infer<typeof orchestratorWorkingTreeDiffSchema>;
+declare const orchestratorRepositoryEntryKindSchema: z.ZodEnum<{
+    file: "file";
+    directory: "directory";
+}>;
+type OrchestratorRepositoryEntryKind = z.infer<typeof orchestratorRepositoryEntryKindSchema>;
+declare const orchestratorRepositoryEntrySchema: z.ZodObject<{
+    path: z.ZodString;
+    name: z.ZodString;
+    kind: z.ZodEnum<{
+        file: "file";
+        directory: "directory";
+    }>;
+    size: z.ZodOptional<z.ZodNumber>;
+}, z.core.$strip>;
+type OrchestratorRepositoryEntry = z.infer<typeof orchestratorRepositoryEntrySchema>;
+declare const orchestratorRepositoryDirectorySchema: z.ZodObject<{
+    projectPath: z.ZodString;
+    path: z.ZodString;
+    parentPath: z.ZodOptional<z.ZodString>;
+    entries: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        path: z.ZodString;
+        name: z.ZodString;
+        kind: z.ZodEnum<{
+            file: "file";
+            directory: "directory";
+        }>;
+        size: z.ZodOptional<z.ZodNumber>;
+    }, z.core.$strip>>>;
+}, z.core.$strip>;
+type OrchestratorRepositoryDirectory = z.infer<typeof orchestratorRepositoryDirectorySchema>;
+declare const orchestratorRepositoryFileStateSchema: z.ZodEnum<{
+    binary: "binary";
+    ready: "ready";
+}>;
+type OrchestratorRepositoryFileState = z.infer<typeof orchestratorRepositoryFileStateSchema>;
+declare const orchestratorRepositoryFileSchema: z.ZodObject<{
+    state: z.ZodEnum<{
+        binary: "binary";
+        ready: "ready";
+    }>;
+    projectPath: z.ZodString;
+    path: z.ZodString;
+    size: z.ZodNumber;
+    content: z.ZodString;
+    truncated: z.ZodDefault<z.ZodBoolean>;
+    message: z.ZodOptional<z.ZodString>;
+}, z.core.$strip>;
+type OrchestratorRepositoryFile = z.infer<typeof orchestratorRepositoryFileSchema>;
 declare const orchestratorScheduleFrequencySchema: z.ZodEnum<{
     daily: "daily";
     weekly: "weekly";
@@ -2617,4 +2665,4 @@ declare function readResponseErrorMessage(response: Pick<Response, "status" | "t
  */
 declare function fetchJson<T>(resource: string, init?: RequestInit): Promise<T>;
 
-export { type AgentKind, type AgentSummary, type ApiError, type AttachmentMediaType, type AttachmentUpload, type ChatProviderCapabilities, type ChatProviderDescriptor, type ChatRequest, type ChatResponse, type ChatRuntimeConfig, type ChatSession, type ChatSessionSummary, type ChatStreamEvent, type ChatTurn, type CopilotCustomAgent, DEFAULT_CHAT_MODEL, DEFAULT_CHAT_PROVIDER, DEFAULT_ORCHESTRATOR_CLI_PROVIDER, type LlmQuotaSnapshot, type LlmRequestStats, type LlmSessionStats, type LlmTokenDetail, type MasterBatch, type MasterBatchApproval, type MasterBatchConfidence, type MasterBatchCreateRequest, type MasterBatchItem, type MasterBatchItemStatus, type MasterBatchStatus, type MasterBatchUpdateRequest, type McpServerConfig, type MemoryAnalysisEntryChange, type MemoryAnalysisRequest, type MemoryAnalysisResponse, type MemoryAnalysisTierSummary, type MemoryAnalysisToolExecution, type MemoryEntry, type MemoryTier, type ModelCatalog, type ModelDescriptor, type OrchestratorCapabilities, type OrchestratorCliProviderCapabilities, type OrchestratorCliProviderDescriptor, type OrchestratorDelegateRequest, type OrchestratorExecutionMode, type OrchestratorJob, type OrchestratorJobStatus, type OrchestratorPromptMode, type OrchestratorSchedule, type OrchestratorScheduleCreateRequest, type OrchestratorScheduleDayOfWeek, type OrchestratorScheduleFrequency, type OrchestratorScheduleUpdateRequest, type OrchestratorSession, type OrchestratorSessionCreateRequest, type OrchestratorSessionRole, type OrchestratorSessionStatus, type OrchestratorSessionSummary, type OrchestratorSessionUpdateRequest, type OrchestratorStructuredDiff, type OrchestratorStructuredDiffHunk, type OrchestratorStructuredDiffLine, type OrchestratorTerminalHistoryChunk, type OrchestratorTerminalInputRequest, type OrchestratorWorkingTree, type OrchestratorWorkingTreeDiff, type OrchestratorWorkingTreeDiffState, type OrchestratorWorkingTreeFile, type OrchestratorWorkingTreeFileStatus, type OrchestratorWorkingTreeState, type PartialChatRuntimeConfig, type PremiumUsage, type PremiumUsageTotals, type ReasoningEffort, type ScheduleTask, type ScheduleTaskCreateRequest, type ScheduleTaskRunStatus, type ScheduleTaskTargetKind, type ScheduleTaskUpdateRequest, type SkillDescriptor, type SkillScope, type StoredAttachment, type TurnSender, type WorkspaceSummary, agentKindSchema, agentSummarySchema, apiErrorSchema, attachmentMediaTypeSchema, attachmentUploadSchema, chatProviderCapabilitiesSchema, chatProviderDescriptorSchema, chatRequestSchema, chatResponseSchema, chatRuntimeConfigSchema, chatSessionSchema, chatSessionSummarySchema, chatStreamEventSchema, chatTurnSchema, copilotCustomAgentSchema, createDefaultChatRuntimeConfig, fetchJson, llmQuotaSnapshotSchema, llmRequestStatsSchema, llmSessionStatsSchema, llmTokenDetailSchema, masterBatchApprovalSchema, masterBatchConfidenceSchema, masterBatchCreateSchema, masterBatchItemSchema, masterBatchItemStatusSchema, masterBatchSchema, masterBatchStatusSchema, masterBatchUpdateSchema, mcpServerConfigSchema, memoryAnalysisEntryChangeSchema, memoryAnalysisRequestSchema, memoryAnalysisResponseSchema, memoryAnalysisTierSummarySchema, memoryAnalysisToolExecutionSchema, memoryEntrySchema, memoryTierSchema, mergeChatRuntimeConfigs, modelCatalogSchema, modelDescriptorSchema, normalizeApiErrorMessage, orchestratorCapabilitiesSchema, orchestratorCliProviderCapabilitiesSchema, orchestratorCliProviderDescriptorSchema, orchestratorDelegateRequestSchema, orchestratorExecutionModeSchema, orchestratorJobSchema, orchestratorJobStatusSchema, orchestratorPromptModeSchema, orchestratorScheduleCreateSchema, orchestratorScheduleDayOfWeekSchema, orchestratorScheduleFrequencySchema, orchestratorScheduleSchema, orchestratorScheduleUpdateSchema, orchestratorSessionCreateSchema, orchestratorSessionRoleSchema, orchestratorSessionSchema, orchestratorSessionStatusSchema, orchestratorSessionSummarySchema, orchestratorSessionUpdateSchema, orchestratorStructuredDiffHunkSchema, orchestratorStructuredDiffLineSchema, orchestratorStructuredDiffSchema, orchestratorTerminalHistoryChunkSchema, orchestratorTerminalInputSchema, orchestratorWorkingTreeDiffSchema, orchestratorWorkingTreeDiffStateSchema, orchestratorWorkingTreeFileSchema, orchestratorWorkingTreeFileStatusSchema, orchestratorWorkingTreeSchema, orchestratorWorkingTreeStateSchema, partialChatRuntimeConfigSchema, premiumUsageSchema, premiumUsageTotalsSchema, readResponseErrorMessage, reasoningEffortSchema, scheduleTaskCreateSchema, scheduleTaskRunStatusSchema, scheduleTaskSchema, scheduleTaskTargetKindSchema, scheduleTaskUpdateSchema, senderSchema, skillDescriptorSchema, skillScopeSchema, storedAttachmentSchema, workspaceSummarySchema };
+export { type AgentKind, type AgentSummary, type ApiError, type AttachmentMediaType, type AttachmentUpload, type ChatProviderCapabilities, type ChatProviderDescriptor, type ChatRequest, type ChatResponse, type ChatRuntimeConfig, type ChatSession, type ChatSessionSummary, type ChatStreamEvent, type ChatTurn, type CopilotCustomAgent, DEFAULT_CHAT_MODEL, DEFAULT_CHAT_PROVIDER, DEFAULT_ORCHESTRATOR_CLI_PROVIDER, type LlmQuotaSnapshot, type LlmRequestStats, type LlmSessionStats, type LlmTokenDetail, type MasterBatch, type MasterBatchApproval, type MasterBatchConfidence, type MasterBatchCreateRequest, type MasterBatchItem, type MasterBatchItemStatus, type MasterBatchStatus, type MasterBatchUpdateRequest, type McpServerConfig, type MemoryAnalysisEntryChange, type MemoryAnalysisRequest, type MemoryAnalysisResponse, type MemoryAnalysisTierSummary, type MemoryAnalysisToolExecution, type MemoryEntry, type MemoryTier, type ModelCatalog, type ModelDescriptor, type OrchestratorCapabilities, type OrchestratorCliProviderCapabilities, type OrchestratorCliProviderDescriptor, type OrchestratorDelegateRequest, type OrchestratorExecutionMode, type OrchestratorJob, type OrchestratorJobStatus, type OrchestratorPromptMode, type OrchestratorRepositoryDirectory, type OrchestratorRepositoryEntry, type OrchestratorRepositoryEntryKind, type OrchestratorRepositoryFile, type OrchestratorRepositoryFileState, type OrchestratorSchedule, type OrchestratorScheduleCreateRequest, type OrchestratorScheduleDayOfWeek, type OrchestratorScheduleFrequency, type OrchestratorScheduleUpdateRequest, type OrchestratorSession, type OrchestratorSessionCreateRequest, type OrchestratorSessionRole, type OrchestratorSessionStatus, type OrchestratorSessionSummary, type OrchestratorSessionUpdateRequest, type OrchestratorStructuredDiff, type OrchestratorStructuredDiffHunk, type OrchestratorStructuredDiffLine, type OrchestratorTerminalHistoryChunk, type OrchestratorTerminalInputRequest, type OrchestratorWorkingTree, type OrchestratorWorkingTreeDiff, type OrchestratorWorkingTreeDiffState, type OrchestratorWorkingTreeFile, type OrchestratorWorkingTreeFileStatus, type OrchestratorWorkingTreeState, type PartialChatRuntimeConfig, type PremiumUsage, type PremiumUsageTotals, type ReasoningEffort, type ScheduleTask, type ScheduleTaskCreateRequest, type ScheduleTaskRunStatus, type ScheduleTaskTargetKind, type ScheduleTaskUpdateRequest, type SkillDescriptor, type SkillScope, type StoredAttachment, type TurnSender, type WorkspaceSummary, agentKindSchema, agentSummarySchema, apiErrorSchema, attachmentMediaTypeSchema, attachmentUploadSchema, chatProviderCapabilitiesSchema, chatProviderDescriptorSchema, chatRequestSchema, chatResponseSchema, chatRuntimeConfigSchema, chatSessionSchema, chatSessionSummarySchema, chatStreamEventSchema, chatTurnSchema, copilotCustomAgentSchema, createDefaultChatRuntimeConfig, fetchJson, llmQuotaSnapshotSchema, llmRequestStatsSchema, llmSessionStatsSchema, llmTokenDetailSchema, masterBatchApprovalSchema, masterBatchConfidenceSchema, masterBatchCreateSchema, masterBatchItemSchema, masterBatchItemStatusSchema, masterBatchSchema, masterBatchStatusSchema, masterBatchUpdateSchema, mcpServerConfigSchema, memoryAnalysisEntryChangeSchema, memoryAnalysisRequestSchema, memoryAnalysisResponseSchema, memoryAnalysisTierSummarySchema, memoryAnalysisToolExecutionSchema, memoryEntrySchema, memoryTierSchema, mergeChatRuntimeConfigs, modelCatalogSchema, modelDescriptorSchema, normalizeApiErrorMessage, orchestratorCapabilitiesSchema, orchestratorCliProviderCapabilitiesSchema, orchestratorCliProviderDescriptorSchema, orchestratorDelegateRequestSchema, orchestratorExecutionModeSchema, orchestratorJobSchema, orchestratorJobStatusSchema, orchestratorPromptModeSchema, orchestratorRepositoryDirectorySchema, orchestratorRepositoryEntryKindSchema, orchestratorRepositoryEntrySchema, orchestratorRepositoryFileSchema, orchestratorRepositoryFileStateSchema, orchestratorScheduleCreateSchema, orchestratorScheduleDayOfWeekSchema, orchestratorScheduleFrequencySchema, orchestratorScheduleSchema, orchestratorScheduleUpdateSchema, orchestratorSessionCreateSchema, orchestratorSessionRoleSchema, orchestratorSessionSchema, orchestratorSessionStatusSchema, orchestratorSessionSummarySchema, orchestratorSessionUpdateSchema, orchestratorStructuredDiffHunkSchema, orchestratorStructuredDiffLineSchema, orchestratorStructuredDiffSchema, orchestratorTerminalHistoryChunkSchema, orchestratorTerminalInputSchema, orchestratorWorkingTreeDiffSchema, orchestratorWorkingTreeDiffStateSchema, orchestratorWorkingTreeFileSchema, orchestratorWorkingTreeFileStatusSchema, orchestratorWorkingTreeSchema, orchestratorWorkingTreeStateSchema, partialChatRuntimeConfigSchema, premiumUsageSchema, premiumUsageTotalsSchema, readResponseErrorMessage, reasoningEffortSchema, scheduleTaskCreateSchema, scheduleTaskRunStatusSchema, scheduleTaskSchema, scheduleTaskTargetKindSchema, scheduleTaskUpdateSchema, senderSchema, skillDescriptorSchema, skillScopeSchema, storedAttachmentSchema, workspaceSummarySchema };

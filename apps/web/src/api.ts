@@ -10,6 +10,8 @@ import type {
   ModelCatalog,
   OrchestratorCapabilities,
   OrchestratorDelegateRequest,
+  OrchestratorRepositoryDirectory,
+  OrchestratorRepositoryFile,
   OrchestratorSchedule,
   OrchestratorScheduleCreateRequest,
   OrchestratorScheduleUpdateRequest,
@@ -134,6 +136,16 @@ export const api = {
   getOrchestratorSessionChangeDiff: (sessionId: string, filePath: string) =>
     request<OrchestratorWorkingTreeDiff>(
       `/api/orchestrator/sessions/${sessionId}/changes/diff?path=${encodeURIComponent(filePath)}`
+    ),
+  getOrchestratorSessionFiles: (sessionId: string, directoryPath?: string) =>
+    request<OrchestratorRepositoryDirectory>(
+      directoryPath
+        ? `/api/orchestrator/sessions/${sessionId}/files?path=${encodeURIComponent(directoryPath)}`
+        : `/api/orchestrator/sessions/${sessionId}/files`
+    ),
+  getOrchestratorSessionFile: (sessionId: string, filePath: string) =>
+    request<OrchestratorRepositoryFile>(
+      `/api/orchestrator/sessions/${sessionId}/files/content?path=${encodeURIComponent(filePath)}`
     ),
   createOrchestratorSession: (requestBody: OrchestratorSessionCreateRequest) =>
     request<OrchestratorSession>("/api/orchestrator/sessions", {

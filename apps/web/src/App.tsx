@@ -550,6 +550,8 @@ export default function App() {
       activateWorkspaceTarget('[data-workspace-target="terminal"]');
     } else if (item.actionId === "open-changes") {
       activateWorkspaceTarget('[data-workspace-target="changes"]');
+    } else if (item.actionId === "open-files") {
+      activateWorkspaceTarget('[data-workspace-target="files"]');
     } else if (item.actionId === "open-schedules") {
       activateWorkspaceTarget('[data-workspace-target="schedules"]');
     } else if (item.actionId === "open-session-settings") {
@@ -1189,6 +1191,16 @@ function buildOrchestratorCommandPaletteItems(
       label: "Open changes",
       description: "Inspect local working tree status and diffs.",
       searchText: "changes diff working tree files",
+      active: false,
+    },
+    {
+      id: "action:open-files",
+      kind: "action",
+      actionId: "open-files",
+      group: "Actions",
+      label: "Open files",
+      description: "Browse project folders and preview repository files.",
+      searchText: "files browse folders repository tree preview",
       active: false,
     },
     {

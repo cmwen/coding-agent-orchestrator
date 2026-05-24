@@ -18,7 +18,14 @@ afterEach(() => {
 
 async function openDesktopWorkspaceView(
   user: ReturnType<typeof userEvent.setup>,
-  view: "delegate" | "terminal" | "queue" | "changes" | "schedules" | "settings"
+  view:
+    | "delegate"
+    | "terminal"
+    | "queue"
+    | "changes"
+    | "files"
+    | "schedules"
+    | "settings"
 ) {
   const button = document.querySelector<HTMLButtonElement>(
     `.orchestrator-workspace-nav [data-workspace-target="${view}"]`
@@ -3359,18 +3366,10 @@ describe("OrchestratorPane", () => {
       />
     );
 
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: /local changes/i })
-      ).toBeTruthy()
-    );
-    expect(screen.getByRole("button", { name: /2 changed/i })).toBeTruthy();
+    await openDesktopWorkspaceView(user, "changes");
 
-    await user.click(
-      screen.getByRole("button", {
-        name: /local changes/i,
-      })
-    );
+    expect(screen.queryByText(/repository files/i)).toBeNull();
+    expect(screen.getByRole("button", { name: /2 changed/i })).toBeTruthy();
 
     await waitFor(() =>
       expect(
@@ -3405,6 +3404,206 @@ describe("OrchestratorPane", () => {
     );
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/orchestrator/sessions/2026-03-20-repo-support/changes/diff?path=apps%2Fweb%2Fsrc%2FOrchestratorPane.tsx",
+      undefined
+    );
+  });
+
+  it("browses folders and previews a repository file in the files workspace", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/changes")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              state: "clean",
+              projectPath: "/tmp/project",
+              files: [],
+              message: "No uncommitted changes in this project.",
+            }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+              },
+            }
+          )
+        );
+      }
+      if (url.endsWith("/files")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              projectPath: "/tmp/project",
+              path: "",
+              entries: [
+                {
+                  path: "src",
+                  name: "src",
+                  kind: "directory",
+                },
+                {
+                  path: "README.md",
+                  name: "README.md",
+                  kind: "file",
+                  size: 1732,
+                },
+              ],
+            }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+              },
+            }
+          )
+        );
+      }
+      if (url.endsWith("/files?path=src")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              projectPath: "/tmp/project",
+              path: "src",
+              parentPath: "",
+              entries: [
+                {
+                  path: "src/App.tsx",
+                  name: "App.tsx",
+                  kind: "file",
+                  size: 4210,
+                },
+              ],
+            }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+              },
+            }
+          )
+        );
+      }
+      if (url.endsWith("/files/content?path=README.md")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              state: "ready",
+              projectPath: "/tmp/project",
+              path: "README.md",
+              size: 1732,
+              content: "# Project README\n\nOverview",
+              truncated: false,
+            }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+              },
+            }
+          )
+        );
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    class MockEventSource {
+      addEventListener = vi.fn();
+      removeEventListener = vi.fn();
+      close = vi.fn();
+      onerror: (() => void) | null = null;
+    }
+    vi.stubGlobal("EventSource", MockEventSource);
+
+    render(
+      <OrchestratorPane
+        capabilities={{
+          available: true,
+          defaultProjectPath: "/tmp/project",
+          recentProjectPaths: [],
+          tmuxInstalled: true,
+          copilotInstalled: true,
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+        }}
+        session={{
+          sessionId: "2026-03-20-repo-support",
+          agentId: "copilot-orchestrator",
+          title: "Repo support",
+          startedAt: "2026-03-20T12:00:00Z",
+          updatedAt: "2026-03-20T12:05:00Z",
+          summary: "Handle runtime support work",
+          projectPath: "/tmp/project",
+          projectPurpose: "Handle runtime support work",
+          model: "gpt-5",
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+          tmuxWindowName: "project-repo-support-0001",
+          tmuxPaneId: "%42",
+          status: "idle",
+          activeJobId: undefined,
+          lastJobId: undefined,
+          availableCustomAgents: [],
+          selectedCustomAgentId: undefined,
+          sessionDirectory: "/tmp/session",
+          manifestPath:
+            "agents/copilot-orchestrator/history/2026-03/2026-03-20-repo-support/SESSION.md",
+          jobs: [],
+          terminalTail: "",
+          logSize: 0,
+        }}
+        schedules={[]}
+        models={[
+          {
+            id: "gpt-5",
+            displayName: "GPT-5",
+            runtimeProvider: "copilot",
+            supportedReasoningEfforts: [],
+          },
+        ]}
+        defaultModelId="gpt-5"
+        projectPathSuggestions={["/tmp/project"]}
+        pending={false}
+        onCreateSession={() => undefined}
+        onUpdateSession={() => undefined}
+        onDelegate={() => undefined}
+        onSendInput={() => undefined}
+        onCancelJob={() => undefined}
+        onRestartSession={() => undefined}
+        onDeleteQueuedJob={() => undefined}
+        onCreateSchedule={() => undefined}
+        onUpdateSchedule={() => undefined}
+        onDeleteSchedule={() => undefined}
+        onSessionUpdate={() => undefined}
+      />
+    );
+
+    await openDesktopWorkspaceView(user, "files");
+    expect(screen.getByText(/repository files/i)).toBeTruthy();
+    expect(screen.queryByText(/local changes/i)).toBeNull();
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /README\.md/i })).toBeTruthy()
+    );
+    await user.click(screen.getByRole("button", { name: /README\.md/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/Project README/)).toBeTruthy()
+    );
+
+    await user.click(screen.getByRole("button", { name: /src/i }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/orchestrator/sessions/2026-03-20-repo-support/files?path=src",
+        undefined
+      )
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/orchestrator/sessions/2026-03-20-repo-support/files",
+      undefined
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/orchestrator/sessions/2026-03-20-repo-support/files/content?path=README.md",
       undefined
     );
   });
@@ -3498,13 +3697,8 @@ describe("OrchestratorPane", () => {
       />
     );
 
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: /local changes/i })
-      ).toBeTruthy()
-    );
-
-    await user.click(screen.getByRole("button", { name: /local changes/i }));
+    await openDesktopWorkspaceView(user, "changes");
+    expect(screen.queryByText(/repository files/i)).toBeNull();
 
     await waitFor(() =>
       expect(

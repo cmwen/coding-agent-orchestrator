@@ -19,6 +19,7 @@ export type CommandPaletteActionId =
   | "open-queue"
   | "open-terminal"
   | "open-changes"
+  | "open-files"
   | "open-schedules"
   | "open-session-settings"
   | "focus-terminal-input";

@@ -24,6 +24,8 @@ Errors use:
 - `DELETE /api/orchestrator/sessions/:sessionId`
 - `GET /api/orchestrator/sessions/:sessionId/changes`
 - `GET /api/orchestrator/sessions/:sessionId/changes/diff?path=<file>`
+- `GET /api/orchestrator/sessions/:sessionId/files?path=<directory>`
+- `GET /api/orchestrator/sessions/:sessionId/files/content?path=<file>`
 - `GET /api/orchestrator/sessions/:sessionId/terminal`
 - `GET /api/orchestrator/sessions/:sessionId/stream`
 - `POST /api/orchestrator/sessions/:sessionId/jobs`
@@ -42,4 +44,3 @@ Errors use:
 - `DELETE /api/orchestrator/schedules/:scheduleId`
 
 Contracts live in `packages/shared/src/index.ts`.
-

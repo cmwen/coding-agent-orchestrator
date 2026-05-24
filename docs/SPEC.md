@@ -5,7 +5,8 @@
 Provide a personal local PWA for orchestrating Coding Agent CLI work across
 multiple tmux-backed sessions. The app should make it easy to create project
 workspaces, delegate queued jobs, observe live terminal output, inspect working
-tree changes, and run recurring scheduled tasks.
+tree changes, browse repository folders, preview file content, and run recurring
+scheduled tasks.
 
 ## Non-Goals
 
@@ -35,7 +36,8 @@ Single local user on a trusted machine or private network.
 7. Cancel or restart stuck tmux sessions.
 8. Create daily, weekly, or monthly scheduled jobs with timezone, delivery, and pause/resume controls.
 9. Inspect uncommitted project changes and diffs from the Changes workspace.
-10. Use the desktop command palette to jump to high-frequency workspace actions.
+10. Browse project folders and preview files from the Files workspace.
+11. Use the desktop command palette to jump to high-frequency workspace actions.
 
 ## Acceptance Criteria
 
@@ -47,5 +49,5 @@ Single local user on a trusted machine or private network.
 - Schedules do not create duplicate runs while the scheduler is busy.
 - Desktop uses a persistent session rail, command palette, and workspace tabs.
 - Mobile uses a compact session picker, an active-session Home hub, a Home queue board, and bottom navigation.
-- Delegate, Terminal, Changes, and Schedules remain scoped to the selected session.
+- Delegate, Terminal, Changes, Files, and Schedules remain scoped to the selected session.
 - PWA assets and GET API cache rules exclude SSE streams.

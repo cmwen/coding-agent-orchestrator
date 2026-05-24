@@ -1,11 +1,13 @@
 // src/index.ts
-import { promises as fs2, watch } from "fs";
-import path2 from "path";
+import { promises as fs3, watch } from "fs";
+import path3 from "path";
 import { fileURLToPath } from "url";
 import {
   masterBatchCreateSchema,
   masterBatchUpdateSchema,
   orchestratorDelegateRequestSchema,
+  orchestratorRepositoryDirectorySchema as orchestratorRepositoryDirectorySchema2,
+  orchestratorRepositoryFileSchema as orchestratorRepositoryFileSchema2,
   orchestratorScheduleCreateSchema,
   orchestratorScheduleUpdateSchema,
   orchestratorSessionCreateSchema,
@@ -96,8 +98,8 @@ function isConflictError(message) {
 
 // src/orchestrator.ts
 import { execFile as execFileCallback } from "child_process";
-import { promises as fs } from "fs";
-import path from "path";
+import { promises as fs2 } from "fs";
+import path2 from "path";
 import { promisify } from "util";
 import {
   DEFAULT_CHAT_MODEL,
@@ -144,6 +146,178 @@ import {
   writeMasterSessionContext,
   writeOrchestratorJobCompletion
 } from "@coding-agent-orchestrator/store";
+
+// src/repository-browser.ts
+import { promises as fs } from "fs";
+import path from "path";
+import {
+  orchestratorRepositoryDirectorySchema,
+  orchestratorRepositoryFileSchema
+} from "@coding-agent-orchestrator/shared";
+var DEFAULT_REPOSITORY_FILE_PREVIEW_BYTES = 128 * 1024;
+async function listRepositoryDirectory(projectPath, directoryPath) {
+  const projectRoot = path.resolve(projectPath);
+  const normalizedDirectoryPath = normalizeRepositoryPath(directoryPath, {
+    allowEmpty: true
+  });
+  const absoluteDirectoryPath = resolveRepositoryAbsolutePath(
+    projectRoot,
+    normalizedDirectoryPath
+  );
+  const directoryStats = await fs.lstat(absoluteDirectoryPath).catch((error) => {
+    if (error.code === "ENOENT") {
+      throw new Error(
+        `Directory does not exist in this project: ${normalizedDirectoryPath || "."}`
+      );
+    }
+    throw error;
+  });
+  if (!directoryStats.isDirectory()) {
+    throw new Error(
+      `Path is not a directory: ${normalizedDirectoryPath || "."}`
+    );
+  }
+  const dirEntries = await fs.readdir(absoluteDirectoryPath, {
+    withFileTypes: true
+  });
+  const entries = await Promise.all(
+    dirEntries.filter((entry) => entry.name !== "." && entry.name !== "..").map(async (entry) => {
+      const absoluteEntryPath = path.join(absoluteDirectoryPath, entry.name);
+      const relativeEntryPath = toRepositoryRelativePath(
+        projectRoot,
+        absoluteEntryPath
+      );
+      const kind = entry.isDirectory() ? "directory" : "file";
+      const size = kind === "file" && !entry.isSymbolicLink() ? (await fs.lstat(absoluteEntryPath)).size : void 0;
+      return {
+        path: relativeEntryPath,
+        name: entry.name,
+        kind,
+        size
+      };
+    })
+  );
+  entries.sort((left, right) => {
+    if (left.kind !== right.kind) {
+      return left.kind === "directory" ? -1 : 1;
+    }
+    return left.name.localeCompare(right.name, void 0, {
+      numeric: true,
+      sensitivity: "base"
+    });
+  });
+  const parentPath = normalizedDirectoryPath ? path.posix.dirname(normalizedDirectoryPath) : void 0;
+  return orchestratorRepositoryDirectorySchema.parse({
+    projectPath: projectRoot,
+    path: normalizedDirectoryPath,
+    parentPath: parentPath && parentPath !== "." ? parentPath : normalizedDirectoryPath ? "" : void 0,
+    entries
+  });
+}
+async function readRepositoryFile(projectPath, filePath, options = {}) {
+  const projectRoot = path.resolve(projectPath);
+  const normalizedFilePath = normalizeRepositoryPath(filePath, {
+    allowEmpty: false
+  });
+  const absoluteFilePath = resolveRepositoryAbsolutePath(
+    projectRoot,
+    normalizedFilePath
+  );
+  const fileStats = await fs.lstat(absoluteFilePath).catch((error) => {
+    if (error.code === "ENOENT") {
+      throw new Error(
+        `File does not exist in this project: ${normalizedFilePath}`
+      );
+    }
+    throw error;
+  });
+  if (fileStats.isDirectory()) {
+    throw new Error("Choose a file path to preview file content.");
+  }
+  if (fileStats.isSymbolicLink()) {
+    throw new Error("Symbolic links cannot be previewed in this workspace.");
+  }
+  const maxPreviewBytes = Math.max(
+    1,
+    options.maxPreviewBytes ?? DEFAULT_REPOSITORY_FILE_PREVIEW_BYTES
+  );
+  const bytesToRead = Math.min(fileStats.size, maxPreviewBytes + 1);
+  const fileHandle = await fs.open(absoluteFilePath, "r");
+  const previewBuffer = Buffer.alloc(bytesToRead);
+  try {
+    const { bytesRead } = await fileHandle.read(
+      previewBuffer,
+      0,
+      bytesToRead,
+      0
+    );
+    const visibleBuffer = previewBuffer.subarray(0, bytesRead);
+    const isBinary = visibleBuffer.includes(0);
+    if (isBinary) {
+      return orchestratorRepositoryFileSchema.parse({
+        state: "binary",
+        projectPath: projectRoot,
+        path: normalizedFilePath,
+        size: fileStats.size,
+        content: "",
+        truncated: false,
+        message: "Binary file preview is not available."
+      });
+    }
+    const truncated = fileStats.size > maxPreviewBytes;
+    return orchestratorRepositoryFileSchema.parse({
+      state: "ready",
+      projectPath: projectRoot,
+      path: normalizedFilePath,
+      size: fileStats.size,
+      content: visibleBuffer.subarray(0, maxPreviewBytes).toString("utf8"),
+      truncated,
+      message: truncated ? `Preview truncated to ${maxPreviewBytes.toLocaleString()} bytes.` : void 0
+    });
+  } finally {
+    await fileHandle.close();
+  }
+}
+function normalizeRepositoryPath(repositoryPath, options) {
+  const normalized = path.posix.normalize(
+    (repositoryPath ?? "").trim().replaceAll("\\", "/")
+  );
+  if (normalized === ".") {
+    if (options.allowEmpty) {
+      return "";
+    }
+    throw new Error("Repository paths must stay inside the session project.");
+  }
+  if (normalized.length === 0 && options.allowEmpty) {
+    return "";
+  }
+  if (normalized.length === 0 || normalized === ".." || normalized.startsWith("../") || path.posix.isAbsolute(normalized)) {
+    throw new Error("Repository paths must stay inside the session project.");
+  }
+  return normalized;
+}
+function resolveRepositoryAbsolutePath(projectRoot, repositoryPath) {
+  const candidatePath = path.resolve(projectRoot, repositoryPath);
+  if (!isPathInside(projectRoot, candidatePath)) {
+    throw new Error("Repository paths must stay inside the session project.");
+  }
+  return candidatePath;
+}
+function toRepositoryRelativePath(projectRoot, absolutePath) {
+  const relativePath = path.relative(projectRoot, absolutePath);
+  if (!relativePath || relativePath === ".") {
+    throw new Error(
+      "Repository entry path must remain inside the project root."
+    );
+  }
+  return relativePath.split(path.sep).join("/");
+}
+function isPathInside(rootPath, candidatePath) {
+  const relativePath = path.relative(rootPath, candidatePath);
+  return relativePath === "" || !relativePath.startsWith("..") && !path.isAbsolute(relativePath);
+}
+
+// src/orchestrator.ts
 var execFile = promisify(execFileCallback);
 var DEFAULT_TMUX_SESSION_NAME = readOrchestratorTmuxSessionName();
 var DIRECT_PROMPT_LIMIT = 800;
@@ -327,20 +501,20 @@ var TmuxOrchestratorService = class {
       title: "CLI Orchestrator",
       description: "Maximizes project context, then delegates implementation work to supported CLI sessions inside tmux windows.",
       combinedPrompt: "You are the built-in Copilot orchestrator agent. Maximize the available project context, keep delegated session state current, and route implementation work through specialized Copilot custom agents instead of doing everything in one generic run.",
-      agentPath: path.join(this.workspace.agentsRoot, ORCHESTRATOR_AGENT_ID),
-      defaultSoulPath: path.join(
+      agentPath: path2.join(this.workspace.agentsRoot, ORCHESTRATOR_AGENT_ID),
+      defaultSoulPath: path2.join(
         this.workspace.agentsRoot,
         "default",
         "SOUL.md"
       ),
       historyRoot,
-      workingMemoryRoot: path.join(
+      workingMemoryRoot: path2.join(
         this.workspace.agentsRoot,
         ORCHESTRATOR_AGENT_ID,
         "memory",
         "working"
       ),
-      skillRoot: path.join(
+      skillRoot: path2.join(
         this.workspace.agentsRoot,
         ORCHESTRATOR_AGENT_ID,
         "skills"
@@ -447,6 +621,14 @@ var TmuxOrchestratorService = class {
     const session = await getOrchestratorSession(this.workspace, sessionId);
     return this.readWorkingTreeDiff(session.projectPath, filePath);
   }
+  async getSessionFiles(sessionId, directoryPath) {
+    const session = await getOrchestratorSession(this.workspace, sessionId);
+    return listRepositoryDirectory(session.projectPath, directoryPath);
+  }
+  async getSessionFile(sessionId, filePath) {
+    const session = await getOrchestratorSession(this.workspace, sessionId);
+    return readRepositoryFile(session.projectPath, filePath);
+  }
   async createSession(request) {
     const role = request.role ?? "standard";
     if (role === "master") {
@@ -459,7 +641,7 @@ var TmuxOrchestratorService = class {
     }
     const cliProvider = this.normalizeCliProvider(request.cliProvider);
     await this.assertCapabilities(cliProvider);
-    const projectPath = path.resolve(request.projectPath);
+    const projectPath = path2.resolve(request.projectPath);
     const model = request.model.trim() || DEFAULT_CHAT_MODEL;
     await this.assertProjectPath(projectPath);
     const availableCustomAgents = cliProvider === COPILOT_CLI_PROVIDER.id ? await discoverCopilotCustomAgents(projectPath) : [];
@@ -474,7 +656,7 @@ var TmuxOrchestratorService = class {
       request.selectedCustomAgentId
     ) : void 0;
     const executionMode = cliProvider === COPILOT_CLI_PROVIDER.id ? request.executionMode ?? "standard" : "standard";
-    const title = request.title?.trim() || request.projectPurpose.trim() || path.basename(projectPath) || "Orchestrator session";
+    const title = request.title?.trim() || request.projectPurpose.trim() || path2.basename(projectPath) || "Orchestrator session";
     const startedAt = (/* @__PURE__ */ new Date()).toISOString();
     const sessionId = `${startedAt.slice(0, 10)}-${slugify(title)}`;
     const providerSessionId = normalizeProviderSessionId(
@@ -834,12 +1016,12 @@ var TmuxOrchestratorService = class {
     return getOrchestratorTerminalSize(this.workspace, sessionId);
   }
   async createWindow(input) {
-    const historyRoot = path.join(
+    const historyRoot = path2.join(
       orchestratorHistoryRoot(this.workspace),
       input.startedAt.slice(0, 7),
       input.sessionId
     );
-    await fs.mkdir(path.join(historyRoot, "terminal"), { recursive: true });
+    await fs2.mkdir(path2.join(historyRoot, "terminal"), { recursive: true });
     await this.ensureTmuxSession();
     await this.runTmux([
       "new-window",
@@ -855,7 +1037,7 @@ var TmuxOrchestratorService = class {
       `${this.tmuxSessionName}:${input.tmuxWindowName}`,
       "#{pane_id}"
     );
-    const logPath = path.join(historyRoot, "terminal", "pane.log");
+    const logPath = path2.join(historyRoot, "terminal", "pane.log");
     await this.runTmux([
       "pipe-pane",
       "-o",
@@ -985,7 +1167,7 @@ var TmuxOrchestratorService = class {
     }
   }
   async assertProjectPath(projectPath) {
-    const stat = await fs.stat(projectPath).catch((error) => {
+    const stat = await fs2.stat(projectPath).catch((error) => {
       if (error.code === "ENOENT") {
         throw new Error(`Project path does not exist: ${projectPath}`);
       }
@@ -994,12 +1176,12 @@ var TmuxOrchestratorService = class {
     if (!stat.isDirectory()) {
       throw new Error(`Project path must be a directory: ${projectPath}`);
     }
-    const historyRoot = path.join(
+    const historyRoot = path2.join(
       this.workspace.agentsRoot,
       ORCHESTRATOR_AGENT_ID
     );
     if (!await pathExists(historyRoot)) {
-      await fs.mkdir(historyRoot, { recursive: true });
+      await fs2.mkdir(historyRoot, { recursive: true });
     }
   }
   async readWorkingTree(projectPath) {
@@ -1256,8 +1438,8 @@ var TmuxOrchestratorService = class {
     );
     let promptPath = job.promptPath;
     if (job.promptMode === "file") {
-      promptPath = path.join(job.jobDirectory, ORCHESTRATOR_PROMPT_FILENAME);
-      await fs.writeFile(
+      promptPath = path2.join(job.jobDirectory, ORCHESTRATOR_PROMPT_FILENAME);
+      await fs2.writeFile(
         promptPath,
         ensureTrailingNewline(effectivePrompt),
         "utf8"
@@ -1271,9 +1453,9 @@ var TmuxOrchestratorService = class {
         }
       );
     }
-    const donePath = path.join(job.jobDirectory, "DONE.json");
-    const outputPath = path.join(job.jobDirectory, "output.log");
-    const scriptPath = path.join(
+    const donePath = path2.join(job.jobDirectory, "DONE.json");
+    const outputPath = path2.join(job.jobDirectory, "output.log");
+    const scriptPath = path2.join(
       job.jobDirectory,
       ORCHESTRATOR_SCRIPT_FILENAME
     );
@@ -1296,8 +1478,8 @@ var TmuxOrchestratorService = class {
       executionMode: session.executionMode,
       tmuxTarget: session.tmuxPaneId
     });
-    await fs.writeFile(scriptPath, script, "utf8");
-    await fs.chmod(scriptPath, 493);
+    await fs2.writeFile(scriptPath, script, "utf8");
+    await fs2.chmod(scriptPath, 493);
     return {
       ...job,
       promptPath,
@@ -1305,7 +1487,7 @@ var TmuxOrchestratorService = class {
     };
   }
   async startPreparedJob(session, job) {
-    const scriptPath = path.join(
+    const scriptPath = path2.join(
       job.jobDirectory,
       ORCHESTRATOR_SCRIPT_FILENAME
     );
@@ -1393,17 +1575,17 @@ var TmuxOrchestratorService = class {
     if (!job.promptPath) {
       return "";
     }
-    return fs.readFile(job.promptPath, "utf8");
+    return fs2.readFile(job.promptPath, "utf8");
   }
   async readRetryAttachment(attachment) {
     if (!attachment) {
       return void 0;
     }
-    const filePath = path.join(
+    const filePath = path2.join(
       this.workspace.storeRoot,
       attachment.relativePath
     );
-    const content = await fs.readFile(filePath);
+    const content = await fs2.readFile(filePath);
     return {
       name: attachment.name,
       contentType: attachment.contentType,
@@ -1503,7 +1685,7 @@ var TmuxOrchestratorService = class {
     if (!job.outputPath) {
       return void 0;
     }
-    const output = await fs.readFile(job.outputPath, "utf8").catch((error) => {
+    const output = await fs2.readFile(job.outputPath, "utf8").catch((error) => {
       if (error.code === "ENOENT") {
         return void 0;
       }
@@ -1799,7 +1981,7 @@ function buildPromptWithAttachmentContext(storeRoot, prompt, attachment) {
   if (!attachment) {
     return trimmedPrompt;
   }
-  const attachmentPath = path.join(storeRoot, attachment.relativePath);
+  const attachmentPath = path2.join(storeRoot, attachment.relativePath);
   return [
     "A file is attached to this delegated task.",
     `Attachment name: ${attachment.name}`,
@@ -2134,10 +2316,10 @@ function formatGitStatusLabel(status) {
   }
 }
 function normalizeRepositoryRelativePath(filePath) {
-  const normalized = path.posix.normalize(
+  const normalized = path2.posix.normalize(
     filePath.trim().replaceAll("\\", "/")
   );
-  if (normalized.length === 0 || normalized === "." || normalized === ".." || normalized.startsWith("../") || path.posix.isAbsolute(normalized)) {
+  if (normalized.length === 0 || normalized === "." || normalized === ".." || normalized.startsWith("../") || path2.posix.isAbsolute(normalized)) {
     throw new Error("Change paths must stay inside the session repository.");
   }
   return normalized;
@@ -2528,9 +2710,9 @@ var scheduleService = new OrchestratorScheduleService(
 );
 var app = new Hono();
 var port = readRuntimePort();
-var runtimeDir = path2.dirname(fileURLToPath(import.meta.url));
-var webDistRoot = path2.resolve(runtimeDir, "../../web/dist");
-var webDistIndex = path2.join(webDistRoot, "index.html");
+var runtimeDir = path3.dirname(fileURLToPath(import.meta.url));
+var webDistRoot = path3.resolve(runtimeDir, "../../web/dist");
+var webDistIndex = path3.join(webDistRoot, "index.html");
 app.onError((error, context) => {
   const status = getHttpErrorStatus(error);
   const log = status >= 500 ? console.error : console.warn;
@@ -2658,6 +2840,32 @@ app.get(
       )
     );
     return context.json(diff);
+  }
+);
+app.get("/api/orchestrator/sessions/:sessionId/files", async (context) => {
+  const directoryPath = context.req.query("path")?.trim() || void 0;
+  const listing = orchestratorRepositoryDirectorySchema2.parse(
+    await orchestrator.getSessionFiles(
+      context.req.param("sessionId"),
+      directoryPath
+    )
+  );
+  return context.json(listing);
+});
+app.get(
+  "/api/orchestrator/sessions/:sessionId/files/content",
+  async (context) => {
+    const filePath = context.req.query("path")?.trim();
+    if (!filePath) {
+      return context.json({ error: "File path is required." }, 400);
+    }
+    const file = orchestratorRepositoryFileSchema2.parse(
+      await orchestrator.getSessionFile(
+        context.req.param("sessionId"),
+        filePath
+      )
+    );
+    return context.json(file);
   }
 );
 app.get("/api/orchestrator/sessions/:sessionId/terminal", async (context) => {
@@ -2793,7 +3001,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 }
 async function streamOrchestratorTerminal(context, sessionId) {
   const initialSession = await orchestrator.getSession(sessionId);
-  const terminalDirectory = path2.join(
+  const terminalDirectory = path3.join(
     initialSession.sessionDirectory,
     "terminal"
   );
@@ -2967,7 +3175,7 @@ async function serveWebRequest(context, requestPath) {
       if (!isNodeError(error) || error.code !== "ENOENT") {
         throw error;
       }
-      if (path2.extname(requestPath)) {
+      if (path3.extname(requestPath)) {
         return context.notFound();
       }
     }
@@ -2985,19 +3193,19 @@ async function serveWebRequest(context, requestPath) {
   }
 }
 function resolveWebAssetPath(requestPath) {
-  const normalizedPath = requestPath === "/" ? "/index.html" : path2.posix.normalize(requestPath);
-  const resolvedPath = path2.resolve(webDistRoot, `.${normalizedPath}`);
+  const normalizedPath = requestPath === "/" ? "/index.html" : path3.posix.normalize(requestPath);
+  const resolvedPath = path3.resolve(webDistRoot, `.${normalizedPath}`);
   return resolvedPath.startsWith(webDistRoot) ? resolvedPath : void 0;
 }
 async function serveWebFile(context, filePath) {
-  const body = await fs2.readFile(filePath);
+  const body = await fs3.readFile(filePath);
   return context.body(body, 200, {
     "cache-control": getWebCacheControl(filePath),
     "content-type": getContentType(filePath)
   });
 }
 function getContentType(filePath) {
-  switch (path2.extname(filePath)) {
+  switch (path3.extname(filePath)) {
     case ".css":
       return "text/css; charset=utf-8";
     case ".html":
@@ -3019,8 +3227,8 @@ function getContentType(filePath) {
   }
 }
 function getWebCacheControl(filePath) {
-  const normalizedPath = filePath.split(path2.sep).join("/");
-  const basename = path2.basename(normalizedPath);
+  const normalizedPath = filePath.split(path3.sep).join("/");
+  const basename = path3.basename(normalizedPath);
   if (normalizedPath.endsWith("/index.html") || normalizedPath.endsWith("/manifest.webmanifest") || normalizedPath.endsWith("/sw.js")) {
     return "no-cache";
   }

@@ -20,6 +20,8 @@ import {
   type OrchestratorDelegateRequest,
   type OrchestratorExecutionMode,
   type OrchestratorJob,
+  type OrchestratorRepositoryDirectory,
+  type OrchestratorRepositoryFile,
   type OrchestratorSchedule,
   type OrchestratorScheduleCreateRequest,
   type OrchestratorScheduleUpdateRequest,
@@ -80,6 +82,10 @@ import {
   readOrchestratorTmuxSessionName,
   readRuntimeSmtpEnv,
 } from "./env.js";
+import {
+  listRepositoryDirectory,
+  readRepositoryFile,
+} from "./repository-browser.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -481,6 +487,22 @@ export class TmuxOrchestratorService {
   ): Promise<OrchestratorWorkingTreeDiff> {
     const session = await getOrchestratorSession(this.workspace, sessionId);
     return this.readWorkingTreeDiff(session.projectPath, filePath);
+  }
+
+  async getSessionFiles(
+    sessionId: string,
+    directoryPath?: string
+  ): Promise<OrchestratorRepositoryDirectory> {
+    const session = await getOrchestratorSession(this.workspace, sessionId);
+    return listRepositoryDirectory(session.projectPath, directoryPath);
+  }
+
+  async getSessionFile(
+    sessionId: string,
+    filePath: string
+  ): Promise<OrchestratorRepositoryFile> {
+    const session = await getOrchestratorSession(this.workspace, sessionId);
+    return readRepositoryFile(session.projectPath, filePath);
   }
 
   async createSession(

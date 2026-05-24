@@ -3,6 +3,9 @@ import type {
   OrchestratorCapabilities,
   OrchestratorExecutionMode,
   OrchestratorJob,
+  OrchestratorRepositoryDirectory,
+  OrchestratorRepositoryEntry,
+  OrchestratorRepositoryFile,
   OrchestratorSchedule,
   OrchestratorScheduleCreateRequest,
   OrchestratorScheduleUpdateRequest,
@@ -35,6 +38,7 @@ import {
 } from "../ui-preferences";
 import { OrchestratorChangesPanel } from "./OrchestratorChangesPanel";
 import { OrchestratorDiffModal } from "./OrchestratorDiffModal";
+import { OrchestratorFilesPanel } from "./OrchestratorFilesPanel";
 import {
   type OrchestratorScheduleDraft,
   OrchestratorScheduleForm,
@@ -84,6 +88,7 @@ type WorkspaceView =
   | "terminal"
   | "queue"
   | "changes"
+  | "files"
   | "schedules"
   | "settings";
 
@@ -394,6 +399,23 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
   const [workingTreeError, setWorkingTreeError] = useState<
     string | undefined
   >();
+  const [repositoryDirectoryPath, setRepositoryDirectoryPath] = useState("");
+  const [repositoryDirectory, setRepositoryDirectory] =
+    useState<OrchestratorRepositoryDirectory>();
+  const [repositoryDirectoryLoading, setRepositoryDirectoryLoading] =
+    useState(false);
+  const [repositoryDirectoryError, setRepositoryDirectoryError] = useState<
+    string | undefined
+  >();
+  const [selectedRepositoryFilePath, setSelectedRepositoryFilePath] = useState<
+    string | undefined
+  >();
+  const [selectedRepositoryFile, setSelectedRepositoryFile] =
+    useState<OrchestratorRepositoryFile>();
+  const [selectedRepositoryFileLoading, setSelectedRepositoryFileLoading] =
+    useState(false);
+  const [selectedRepositoryFileError, setSelectedRepositoryFileError] =
+    useState<string | undefined>();
   const [selectedChangePath, setSelectedChangePath] = useState<
     string | undefined
   >();
@@ -412,6 +434,8 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
   const reconnectTimeoutRef = useRef<number | undefined>(undefined);
   const streamReconnectAttemptRef = useRef(0);
   const workingTreeRequestRef = useRef(0);
+  const repositoryDirectoryRequestRef = useRef(0);
+  const repositoryFileRequestRef = useRef(0);
   const changeDiffRequestRef = useRef(0);
   const pageVisibleRef = useRef(
     typeof document === "undefined"
@@ -552,6 +576,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
     { id: "terminal", label: "Terminal" },
     { id: "queue", label: "Queue" },
     { id: "changes", label: "Changes" },
+    { id: "files", label: "Files" },
     { id: "schedules", label: "Schedules" },
     { id: "settings", label: "Settings" },
   ];
@@ -687,6 +712,16 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
     setWorkingTree(undefined);
     setWorkingTreeLoading(false);
     setWorkingTreeError(undefined);
+    setRepositoryDirectoryPath("");
+    setRepositoryDirectory(undefined);
+    setRepositoryDirectoryLoading(false);
+    setRepositoryDirectoryError(undefined);
+    setSelectedRepositoryFilePath(undefined);
+    setSelectedRepositoryFile(undefined);
+    setSelectedRepositoryFileLoading(false);
+    setSelectedRepositoryFileError(undefined);
+    repositoryDirectoryRequestRef.current += 1;
+    repositoryFileRequestRef.current += 1;
     setSelectedChangePath(undefined);
     setSelectedChangeDiff(undefined);
     setSelectedChangeDiffLoading(false);
@@ -825,6 +860,68 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
   ]);
 
   useEffect(() => {
+    if (!props.session || activeWorkspaceView !== "files") {
+      return;
+    }
+
+    const sessionId = props.session.sessionId;
+    const requestId = repositoryDirectoryRequestRef.current + 1;
+    repositoryDirectoryRequestRef.current = requestId;
+    setRepositoryDirectoryLoading(true);
+    setRepositoryDirectoryError(undefined);
+
+    void api
+      .getOrchestratorSessionFiles(
+        sessionId,
+        repositoryDirectoryPath || undefined
+      )
+      .then((response) => {
+        if (repositoryDirectoryRequestRef.current !== requestId) {
+          return;
+        }
+        setRepositoryDirectory(response);
+        setSelectedRepositoryFilePath((current) =>
+          current && response.entries.some((entry) => entry.path === current)
+            ? current
+            : undefined
+        );
+        setSelectedRepositoryFile((current) =>
+          current &&
+          response.entries.some((entry) => entry.path === current.path)
+            ? current
+            : undefined
+        );
+        setSelectedRepositoryFileError(undefined);
+      })
+      .catch((error) => {
+        if (repositoryDirectoryRequestRef.current !== requestId) {
+          return;
+        }
+        if (isMissingOrchestratorSessionError(error)) {
+          props.onSessionMissing?.(sessionId);
+          return;
+        }
+        setRepositoryDirectory(undefined);
+        setRepositoryDirectoryError(
+          error instanceof Error
+            ? error.message
+            : "Failed to load repository files."
+        );
+      })
+      .finally(() => {
+        if (repositoryDirectoryRequestRef.current === requestId) {
+          setRepositoryDirectoryLoading(false);
+        }
+      });
+  }, [
+    activeWorkspaceView,
+    props.onSessionMissing,
+    props.session?.sessionId,
+    props.session?.updatedAt,
+    repositoryDirectoryPath,
+  ]);
+
+  useEffect(() => {
     streamOffsetRef.current = props.session?.logSize ?? 0;
     streamReconnectAttemptRef.current = 0;
   }, [props.session?.sessionId]);
@@ -957,6 +1054,55 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
   const selectedWorkingTreeFile = visibleWorkingTreeFiles.find(
     (file) => file.path === selectedChangePath
   );
+
+  function handleOpenRepositoryDirectory(nextPath: string) {
+    repositoryFileRequestRef.current += 1;
+    setRepositoryDirectoryPath(nextPath);
+    setSelectedRepositoryFilePath(undefined);
+    setSelectedRepositoryFile(undefined);
+    setSelectedRepositoryFileLoading(false);
+    setSelectedRepositoryFileError(undefined);
+  }
+
+  async function handleSelectRepositoryFile(
+    entry: OrchestratorRepositoryEntry
+  ) {
+    if (!props.session || entry.kind !== "file") {
+      return;
+    }
+
+    const sessionId = props.session.sessionId;
+    const requestId = repositoryFileRequestRef.current + 1;
+    repositoryFileRequestRef.current = requestId;
+    setSelectedRepositoryFilePath(entry.path);
+    setSelectedRepositoryFile(undefined);
+    setSelectedRepositoryFileLoading(true);
+    setSelectedRepositoryFileError(undefined);
+
+    try {
+      const file = await api.getOrchestratorSessionFile(sessionId, entry.path);
+      if (repositoryFileRequestRef.current !== requestId) {
+        return;
+      }
+      setSelectedRepositoryFile(file);
+    } catch (error) {
+      if (repositoryFileRequestRef.current !== requestId) {
+        return;
+      }
+      if (isMissingOrchestratorSessionError(error)) {
+        props.onSessionMissing?.(sessionId);
+        return;
+      }
+      setSelectedRepositoryFile(undefined);
+      setSelectedRepositoryFileError(
+        error instanceof Error ? error.message : "Failed to load file preview."
+      );
+    } finally {
+      if (repositoryFileRequestRef.current === requestId) {
+        setSelectedRepositoryFileLoading(false);
+      }
+    }
+  }
 
   useEffect(() => {
     if (
@@ -1572,41 +1718,39 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
             </div>
           </div>
           <div className="orchestrator-session-actions" aria-live="polite">
-            <div className="runtime-control orchestrator-changes-control">
-              <button
-                type="button"
-                className={
-                  activeWorkspaceView === "changes"
-                    ? "toolbar-chip orchestrator-changes-trigger open"
-                    : "toolbar-chip orchestrator-changes-trigger"
-                }
-                aria-controls={changesPanelId}
-                onClick={() => handleSelectWorkspaceView("changes")}
-              >
-                <span className="orchestrator-changes-trigger-topline">
-                  <span className="toolbar-chip-label">Local changes</span>
-                  <span className="orchestrator-changes-trigger-badge">
-                    {dirtyFileCount}
+            {activeWorkspaceView === "changes" ? (
+              <div className="runtime-control orchestrator-changes-control">
+                <button
+                  type="button"
+                  className="toolbar-chip orchestrator-changes-trigger open"
+                  aria-controls={changesPanelId}
+                  onClick={() => handleSelectWorkspaceView("changes")}
+                >
+                  <span className="orchestrator-changes-trigger-topline">
+                    <span className="toolbar-chip-label">Local changes</span>
+                    <span className="orchestrator-changes-trigger-badge">
+                      {dirtyFileCount}
+                    </span>
                   </span>
-                </span>
-                <strong>
-                  {workingTreeLoading
-                    ? "Loading changes…"
-                    : workingTree?.state === "dirty"
-                      ? `${dirtyFileCount} changed`
-                      : workingTree?.state === "clean"
-                        ? "Working tree clean"
-                        : "Change details"}
-                </strong>
-                <small>
-                  {workingTreeError ??
-                    workingTree?.message ??
-                    (workingTree?.state === "dirty"
-                      ? "Open to inspect changed files."
-                      : "Open for repository status.")}
-                </small>
-              </button>
-            </div>
+                  <strong>
+                    {workingTreeLoading
+                      ? "Loading changes…"
+                      : workingTree?.state === "dirty"
+                        ? `${dirtyFileCount} changed`
+                        : workingTree?.state === "clean"
+                          ? "Working tree clean"
+                          : "Change details"}
+                  </strong>
+                  <small>
+                    {workingTreeError ??
+                      workingTree?.message ??
+                      (workingTree?.state === "dirty"
+                        ? "Open to inspect changed files."
+                        : "Open for repository status.")}
+                  </small>
+                </button>
+              </div>
+            ) : null}
             <button
               type="button"
               className="ghost-button"
@@ -1907,22 +2051,39 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
             </div>
           </div>
         </div>
-        <div
-          id={changesPanelId}
-          className={`settings-card orchestrator-changes-panel-workspace orchestrator-workspace-panel orchestrator-board-card orchestrator-board-card-changes ${
-            activeWorkspaceView === "changes" ? "is-active" : ""
-          }`}
-          data-mobile-visible={activeWorkspaceView === "changes"}
-          hidden={activeWorkspaceView !== "changes"}
-        >
-          <OrchestratorChangesPanel
-            workingTree={workingTree}
-            loading={workingTreeLoading}
-            error={workingTreeError}
-            selectedPath={selectedChangePath}
-            onSelectFile={(file) => void handleSelectChangedFile(file)}
-          />
-        </div>
+        {activeWorkspaceView === "changes" ? (
+          <div
+            id={changesPanelId}
+            className="settings-card orchestrator-changes-panel-workspace orchestrator-workspace-panel orchestrator-board-card orchestrator-board-card-changes is-active"
+            data-mobile-visible="true"
+          >
+            <OrchestratorChangesPanel
+              workingTree={workingTree}
+              loading={workingTreeLoading}
+              error={workingTreeError}
+              selectedPath={selectedChangePath}
+              onSelectFile={(file) => void handleSelectChangedFile(file)}
+            />
+          </div>
+        ) : null}
+        {activeWorkspaceView === "files" ? (
+          <div
+            className="settings-card orchestrator-files-panel-workspace orchestrator-workspace-panel orchestrator-board-card orchestrator-board-card-files is-active"
+            data-mobile-visible="true"
+          >
+            <OrchestratorFilesPanel
+              directory={repositoryDirectory}
+              loading={repositoryDirectoryLoading}
+              error={repositoryDirectoryError}
+              selectedPath={selectedRepositoryFilePath}
+              file={selectedRepositoryFile}
+              fileLoading={selectedRepositoryFileLoading}
+              fileError={selectedRepositoryFileError}
+              onOpenDirectory={handleOpenRepositoryDirectory}
+              onSelectFile={(entry) => void handleSelectRepositoryFile(entry)}
+            />
+          </div>
+        ) : null}
 
         <div
           id={queuePanelId}
@@ -2752,6 +2913,21 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
         <button
           type="button"
           className={
+            activeWorkspaceView === "files"
+              ? "mobile-workspace-tab is-active"
+              : "mobile-workspace-tab"
+          }
+          data-workspace-target="files"
+          onClick={() => handleSelectWorkspaceView("files")}
+        >
+          <span className="mobile-nav-icon" aria-hidden="true">
+            <FilesIcon />
+          </span>
+          Files
+        </button>
+        <button
+          type="button"
+          className={
             activeWorkspaceView === "settings"
               ? "mobile-workspace-tab is-active"
               : "mobile-workspace-tab"
@@ -3024,6 +3200,17 @@ function ChangesIcon() {
       <path
         fill="currentColor"
         d="M7 3h10v2H7V3Zm0 6h10v2H7V9Zm0 6h6v2H7v-2Zm10.59-1.41L20 16l-5 5-3-3 1.41-1.41L15 18.17l3.59-3.58Z"
+      />
+    </svg>
+  );
+}
+
+function FilesIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M10 4 12 6h8a2 2 0 0 1 2 2v2H2V6a2 2 0 0 1 2-2h6Zm12 8v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6h20Z"
       />
     </svg>
   );

@@ -497,6 +497,55 @@ export type OrchestratorWorkingTreeDiff = z.infer<
   typeof orchestratorWorkingTreeDiffSchema
 >;
 
+export const orchestratorRepositoryEntryKindSchema = z.enum([
+  "file",
+  "directory",
+]);
+export type OrchestratorRepositoryEntryKind = z.infer<
+  typeof orchestratorRepositoryEntryKindSchema
+>;
+
+export const orchestratorRepositoryEntrySchema = z.object({
+  path: z.string().min(1),
+  name: z.string().min(1),
+  kind: orchestratorRepositoryEntryKindSchema,
+  size: z.number().int().nonnegative().optional(),
+});
+export type OrchestratorRepositoryEntry = z.infer<
+  typeof orchestratorRepositoryEntrySchema
+>;
+
+export const orchestratorRepositoryDirectorySchema = z.object({
+  projectPath: z.string().min(1),
+  path: z.string(),
+  parentPath: z.string().optional(),
+  entries: z.array(orchestratorRepositoryEntrySchema).default([]),
+});
+export type OrchestratorRepositoryDirectory = z.infer<
+  typeof orchestratorRepositoryDirectorySchema
+>;
+
+export const orchestratorRepositoryFileStateSchema = z.enum([
+  "ready",
+  "binary",
+]);
+export type OrchestratorRepositoryFileState = z.infer<
+  typeof orchestratorRepositoryFileStateSchema
+>;
+
+export const orchestratorRepositoryFileSchema = z.object({
+  state: orchestratorRepositoryFileStateSchema,
+  projectPath: z.string().min(1),
+  path: z.string().min(1),
+  size: z.number().int().nonnegative(),
+  content: z.string(),
+  truncated: z.boolean().default(false),
+  message: z.string().min(1).optional(),
+});
+export type OrchestratorRepositoryFile = z.infer<
+  typeof orchestratorRepositoryFileSchema
+>;
+
 export const orchestratorScheduleFrequencySchema = z.enum([
   "daily",
   "weekly",
