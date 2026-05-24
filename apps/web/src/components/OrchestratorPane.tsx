@@ -2089,6 +2089,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
           <div
             id={queuePanelId}
             className="settings-card orchestrator-job-stack orchestrator-workspace-panel orchestrator-board-card orchestrator-board-card-queue is-active"
+            data-mobile-visible="true"
           >
             <div className="orchestrator-job-stack-header">
               <div className="orchestrator-job-stack-toggle-copy">
@@ -2740,7 +2741,10 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
         ) : null}
 
         {activeWorkspaceView === "delegate" ? (
-          <div className="orchestrator-control-grid orchestrator-workspace-panel orchestrator-board-card orchestrator-board-card-delegate is-active">
+          <div
+            className="orchestrator-control-grid orchestrator-workspace-panel orchestrator-board-card orchestrator-board-card-delegate is-active"
+            data-mobile-visible="true"
+          >
             <div className="settings-card orchestrator-primary-action">
               <label className="field-group grow">
                 <span>Delegate a CLI task</span>

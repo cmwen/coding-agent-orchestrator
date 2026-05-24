@@ -34,6 +34,17 @@ async function openDesktopWorkspaceView(
   await user.click(button ?? document.body);
 }
 
+async function openMobileWorkspaceView(
+  user: ReturnType<typeof userEvent.setup>,
+  view: "delegate" | "terminal" | "queue" | "changes" | "files" | "schedules"
+) {
+  const button = document.querySelector<HTMLButtonElement>(
+    `.orchestrator-mobile-nav [data-workspace-target="${view}"]`
+  );
+  expect(button).toBeTruthy();
+  await user.click(button ?? document.body);
+}
+
 describe("OrchestratorPane", () => {
   it("submits a new orchestrator session request", async () => {
     const user = userEvent.setup();
@@ -2714,6 +2725,151 @@ describe("OrchestratorPane", () => {
     expect(screen.getByText("Recurring schedules")).toBeTruthy();
     expect(screen.queryByText("Task queue")).toBeNull();
     expect(screen.queryByText("Delegate a CLI task")).toBeNull();
+  });
+
+  it("shows queue and delegate workspace content from desktop and mobile controls", async () => {
+    const user = userEvent.setup();
+    class MockEventSource {
+      addEventListener = vi.fn();
+      removeEventListener = vi.fn();
+      close = vi.fn();
+      onerror: (() => void) | null = null;
+    }
+    vi.stubGlobal("EventSource", MockEventSource);
+
+    render(
+      <OrchestratorPane
+        capabilities={{
+          available: true,
+          defaultProjectPath: "/tmp/project",
+          recentProjectPaths: [],
+          tmuxInstalled: true,
+          copilotInstalled: true,
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+        }}
+        session={{
+          sessionId: "2026-03-20-repo-support",
+          agentId: "copilot-orchestrator",
+          title: "Repo support",
+          startedAt: "2026-03-20T12:00:00Z",
+          updatedAt: "2026-03-20T12:05:00Z",
+          summary: "Handle runtime support work",
+          projectPath: "/tmp/project",
+          projectPurpose: "Handle runtime support work",
+          cliProvider: "copilot",
+          model: "gpt-5",
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+          tmuxWindowName: "project-repo-support-0001",
+          tmuxPaneId: "%42",
+          status: "idle",
+          activeJobId: undefined,
+          lastJobId: "job-queued",
+          availableCustomAgents: [],
+          selectedCustomAgentId: undefined,
+          executionMode: "standard",
+          sessionDirectory: "/tmp/session",
+          manifestPath:
+            "agents/copilot-orchestrator/history/2026-03/2026-03-20-repo-support/SESSION.md",
+          jobs: [
+            {
+              jobId: "job-queued",
+              sessionId: "2026-03-20-repo-support",
+              promptPreview: "Review login bug reproduction",
+              promptMode: "inline",
+              status: "queued",
+              submittedAt: "2026-03-20T12:03:30Z",
+              jobDirectory: "/tmp/session/delegations/job-queued",
+            },
+          ],
+          terminalTail: "",
+          logSize: 0,
+        }}
+        models={[
+          {
+            id: "gpt-5",
+            displayName: "GPT-5",
+            runtimeProvider: "copilot",
+            supportedReasoningEfforts: [],
+          },
+        ]}
+        defaultModelId="gpt-5"
+        projectPathSuggestions={["/tmp/project"]}
+        pending={false}
+        onCreateSession={() => undefined}
+        onUpdateSession={() => undefined}
+        onDelegate={() => undefined}
+        onSendInput={() => undefined}
+        onCancelJob={() => undefined}
+        onRestartSession={() => undefined}
+        onDeleteQueuedJob={() => undefined}
+        schedules={[]}
+        onCreateSchedule={() => undefined}
+        onUpdateSchedule={() => undefined}
+        onDeleteSchedule={() => undefined}
+        onSessionUpdate={() => undefined}
+      />
+    );
+
+    const delegatePanel = document.querySelector(
+      ".orchestrator-board-card-delegate.is-active"
+    );
+    expect(delegatePanel).toBeTruthy();
+    expect(
+      (delegatePanel as HTMLElement).getAttribute("data-mobile-visible")
+    ).toBe("true");
+    expect(
+      within(delegatePanel as HTMLElement).getByText("Delegate a CLI task")
+    ).toBeTruthy();
+
+    await openDesktopWorkspaceView(user, "queue");
+    const queuePanel = document.querySelector(
+      ".orchestrator-board-card-queue.is-active"
+    );
+    expect(queuePanel).toBeTruthy();
+    expect(
+      (queuePanel as HTMLElement).getAttribute("data-mobile-visible")
+    ).toBe("true");
+    expect(
+      within(queuePanel as HTMLElement).getByText("Task queue")
+    ).toBeTruthy();
+    expect(
+      within(queuePanel as HTMLElement).getByText(
+        "Review login bug reproduction"
+      )
+    ).toBeTruthy();
+
+    await openMobileWorkspaceView(user, "delegate");
+    const delegatePanelFromMobile = document.querySelector(
+      ".orchestrator-board-card-delegate.is-active"
+    );
+    expect(delegatePanelFromMobile).toBeTruthy();
+    expect(
+      (delegatePanelFromMobile as HTMLElement).getAttribute(
+        "data-mobile-visible"
+      )
+    ).toBe("true");
+    expect(
+      within(delegatePanelFromMobile as HTMLElement).getByText(
+        "Delegate a CLI task"
+      )
+    ).toBeTruthy();
+
+    await openMobileWorkspaceView(user, "queue");
+    const queuePanelFromMobile = document.querySelector(
+      ".orchestrator-board-card-queue.is-active"
+    );
+    expect(queuePanelFromMobile).toBeTruthy();
+    expect(
+      (queuePanelFromMobile as HTMLElement).getAttribute("data-mobile-visible")
+    ).toBe("true");
+    expect(
+      within(queuePanelFromMobile as HTMLElement).getByText("Task queue")
+    ).toBeTruthy();
+    expect(
+      within(queuePanelFromMobile as HTMLElement).getByText(
+        "Review login bug reproduction"
+      )
+    ).toBeTruthy();
   });
 
   it("routes queued task deletion through the provided handler", async () => {
