@@ -2085,468 +2085,472 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
           </div>
         ) : null}
 
-        <div
-          id={queuePanelId}
-          className={`settings-card orchestrator-job-stack orchestrator-workspace-panel orchestrator-board-card orchestrator-board-card-queue ${
-            activeWorkspaceView === "queue" ? "is-active" : ""
-          }`}
-          data-mobile-visible={activeWorkspaceView === "queue"}
-          aria-hidden={activeWorkspaceView !== "queue"}
-          hidden={activeWorkspaceView !== "queue"}
-        >
-          <div className="orchestrator-job-stack-header">
-            <div className="orchestrator-job-stack-toggle-copy">
-              <span className="eyebrow">Task queue</span>
-              <strong>
-                {activeJob
-                  ? "Current run plus any queued follow-up work"
-                  : "Most recent delegated tasks"}
-              </strong>
-            </div>
-            <div className="orchestrator-job-stack-stats">
-              <span className="orchestrator-job-counter">
-                {activeJob ? 1 : 0} running
-              </span>
-              <span className="orchestrator-job-counter">
-                {queuedJobs.length} queued
-              </span>
-              <span className="orchestrator-job-counter">
-                {completedJobCount ?? 0} completed
-              </span>
-              <span className="orchestrator-job-counter">
-                {failedJobCount ?? 0} failed
-              </span>
-            </div>
-          </div>
-          <div className="orchestrator-mobile-queue-board">
-            <section className="orchestrator-mobile-queue-overview">
-              <div className="orchestrator-mobile-queue-summary">
-                <div className="orchestrator-mobile-queue-board-header">
-                  <div>
-                    <span className="eyebrow">Queue</span>
-                    <strong>{props.session.title}</strong>
-                  </div>
-                  <span className="scope-chip">{props.session.status}</span>
-                </div>
-                <p className="panel-caption">{props.session.projectPurpose}</p>
-                <div className="orchestrator-mobile-queue-meta">
-                  <span>{props.session.projectPath}</span>
-                  <span>
-                    {selectedSavedSessionCliProvider?.displayName ??
-                      props.session.cliProvider}
-                    {" · "}
-                    {selectedSavedSessionModel?.displayName ??
-                      props.session.model}
-                  </span>
-                  <span>
-                    {queuedJobs.length} queued • {failedJobCount ?? 0} failed •{" "}
-                    {enabledScheduleCount} scheduled
-                  </span>
-                  <span>
-                    {latestKnownProviderSession
-                      ? `Session ID ${latestKnownProviderSession.providerSessionId}`
-                      : "Starts fresh by default"}
-                  </span>
-                </div>
-                <div className="orchestrator-mobile-queue-actions">
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onClick={() => handleSelectWorkspaceView("delegate")}
-                  >
-                    Delegate next
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onClick={() => handleSelectWorkspaceView("terminal")}
-                  >
-                    Open terminal
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onClick={() => handleSelectWorkspaceView("changes")}
-                  >
-                    Review changes
-                  </button>
-                </div>
+        {activeWorkspaceView === "queue" ? (
+          <div
+            id={queuePanelId}
+            className="settings-card orchestrator-job-stack orchestrator-workspace-panel orchestrator-board-card orchestrator-board-card-queue is-active"
+          >
+            <div className="orchestrator-job-stack-header">
+              <div className="orchestrator-job-stack-toggle-copy">
+                <span className="eyebrow">Task queue</span>
+                <strong>
+                  {activeJob
+                    ? "Current run plus any queued follow-up work"
+                    : "Most recent delegated tasks"}
+                </strong>
               </div>
-              <div className="orchestrator-mobile-session-switcher">
-                <div className="orchestrator-mobile-session-switcher-header">
-                  <div>
-                    <span className="eyebrow">Switch session</span>
-                    <strong>Jump between active workspaces</strong>
+              <div className="orchestrator-job-stack-stats">
+                <span className="orchestrator-job-counter">
+                  {activeJob ? 1 : 0} running
+                </span>
+                <span className="orchestrator-job-counter">
+                  {queuedJobs.length} queued
+                </span>
+                <span className="orchestrator-job-counter">
+                  {completedJobCount ?? 0} completed
+                </span>
+                <span className="orchestrator-job-counter">
+                  {failedJobCount ?? 0} failed
+                </span>
+              </div>
+            </div>
+            <div className="orchestrator-mobile-queue-board">
+              <section className="orchestrator-mobile-queue-overview">
+                <div className="orchestrator-mobile-queue-summary">
+                  <div className="orchestrator-mobile-queue-board-header">
+                    <div>
+                      <span className="eyebrow">Queue</span>
+                      <strong>{props.session.title}</strong>
+                    </div>
+                    <span className="scope-chip">{props.session.status}</span>
                   </div>
-                  {props.onSelectSession ? (
+                  <p className="panel-caption">
+                    {props.session.projectPurpose}
+                  </p>
+                  <div className="orchestrator-mobile-queue-meta">
+                    <span>{props.session.projectPath}</span>
+                    <span>
+                      {selectedSavedSessionCliProvider?.displayName ??
+                        props.session.cliProvider}
+                      {" · "}
+                      {selectedSavedSessionModel?.displayName ??
+                        props.session.model}
+                    </span>
+                    <span>
+                      {queuedJobs.length} queued • {failedJobCount ?? 0} failed
+                      • {enabledScheduleCount} scheduled
+                    </span>
+                    <span>
+                      {latestKnownProviderSession
+                        ? `Session ID ${latestKnownProviderSession.providerSessionId}`
+                        : "Starts fresh by default"}
+                    </span>
+                  </div>
+                  <div className="orchestrator-mobile-queue-actions">
                     <button
                       type="button"
                       className="ghost-button"
-                      onClick={() => props.onSelectSession?.(undefined)}
+                      onClick={() => handleSelectWorkspaceView("delegate")}
                     >
-                      New
+                      Delegate next
                     </button>
-                  ) : null}
-                </div>
-                <div className="orchestrator-mobile-session-switcher-list">
-                  {mobileQueueSessions.map((session) => (
                     <button
-                      key={session.sessionId}
                       type="button"
-                      className={
-                        session.sessionId === props.session?.sessionId
-                          ? "orchestrator-mobile-session-chip is-active"
-                          : "orchestrator-mobile-session-chip"
-                      }
-                      onClick={() => props.onSelectSession?.(session.sessionId)}
+                      className="ghost-button"
+                      onClick={() => handleSelectWorkspaceView("terminal")}
                     >
-                      <strong>{session.title}</strong>
-                      <span>{session.status}</span>
-                      <small>
-                        {session.jobs.filter((job) => job.status === "queued")
-                          .length || 0}{" "}
-                        queued
-                      </small>
+                      Open terminal
                     </button>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() => handleSelectWorkspaceView("changes")}
+                    >
+                      Review changes
+                    </button>
+                  </div>
+                </div>
+                <div className="orchestrator-mobile-session-switcher">
+                  <div className="orchestrator-mobile-session-switcher-header">
+                    <div>
+                      <span className="eyebrow">Switch session</span>
+                      <strong>Jump between active workspaces</strong>
+                    </div>
+                    {props.onSelectSession ? (
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={() => props.onSelectSession?.(undefined)}
+                      >
+                        New
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="orchestrator-mobile-session-switcher-list">
+                    {mobileQueueSessions.map((session) => (
+                      <button
+                        key={session.sessionId}
+                        type="button"
+                        className={
+                          session.sessionId === props.session?.sessionId
+                            ? "orchestrator-mobile-session-chip is-active"
+                            : "orchestrator-mobile-session-chip"
+                        }
+                        onClick={() =>
+                          props.onSelectSession?.(session.sessionId)
+                        }
+                      >
+                        <strong>{session.title}</strong>
+                        <span>{session.status}</span>
+                        <small>
+                          {session.jobs.filter((job) => job.status === "queued")
+                            .length || 0}{" "}
+                          queued
+                        </small>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </section>
+              <div className="orchestrator-queue-lanes">
+                {queueBoardSections.map(({ label, status, items }) => (
+                  <div
+                    key={label}
+                    className="orchestrator-queue-lane"
+                    data-status={status}
+                  >
+                    <div className="orchestrator-queue-lane-header">
+                      <strong>{label}</strong>
+                      <span
+                        className="orchestrator-job-counter"
+                        data-status={status}
+                      >
+                        {items.length}
+                      </span>
+                    </div>
+                    {items.length > 0 ? (
+                      <div className="orchestrator-queue-lane-list">
+                        {items.slice(0, 2).map((item) => (
+                          <div
+                            key={item.jobId}
+                            className="orchestrator-queue-board-card"
+                          >
+                            <strong>
+                              {label}: {item.promptPreview}
+                            </strong>
+                            <span>{describeJobProgress(item)}</span>
+                            <div className="orchestrator-queue-board-actions">
+                              {item.status === "queued" ? (
+                                <button
+                                  type="button"
+                                  className="ghost-button danger-button queued-job-delete-button"
+                                  onClick={() =>
+                                    props.onDeleteQueuedJob(item.jobId)
+                                  }
+                                  disabled={props.pending}
+                                >
+                                  Quick delete
+                                </button>
+                              ) : item.status === "failed" &&
+                                canRetryJob(item) ? (
+                                <button
+                                  type="button"
+                                  className="ghost-button"
+                                  onClick={() =>
+                                    props.onRetryFailedJob?.(item.jobId)
+                                  }
+                                  disabled={
+                                    props.pending || !props.onRetryFailedJob
+                                  }
+                                >
+                                  Quick retry
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="ghost-button"
+                                  onClick={() =>
+                                    handleSelectWorkspaceView(
+                                      item.status === "running"
+                                        ? "terminal"
+                                        : "queue"
+                                    )
+                                  }
+                                >
+                                  Open
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="panel-caption">
+                        No {label.toLowerCase()} items.
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="orchestrator-job-stack-panel">
+              {visibleJobs.length > 0 ? (
+                <div className="orchestrator-job-list">
+                  {visibleJobs.map((job) => (
+                    <article
+                      key={job.jobId}
+                      className={`orchestrator-job-item orchestrator-job-item-${job.status}`}
+                    >
+                      <div className="orchestrator-job-row">
+                        <div className="orchestrator-job-title">
+                          <span className="scope-chip">
+                            {humanizeJobStatus(job.status)}
+                          </span>
+                          <strong>{job.promptPreview}</strong>
+                          {job.masterBatchId ? (
+                            <span
+                              className="scope-chip orchestrator-master-origin-chip"
+                              title={`Master batch ${job.masterBatchId}${job.masterItemId ? ` · item ${job.masterItemId}` : ""}`}
+                            >
+                              Dispatched from master
+                            </span>
+                          ) : null}
+                          {job.providerSessionId ? (
+                            <span
+                              className="panel-caption orchestrator-job-session-id"
+                              title={job.providerSessionId}
+                            >
+                              Coding agent session ID: {job.providerSessionId}
+                            </span>
+                          ) : null}
+                          {job.attachment ? (
+                            <span className="panel-caption">
+                              {job.attachment.name}
+                            </span>
+                          ) : null}
+                        </div>
+                        <span className="panel-caption">
+                          {formatJobTimestamp(job)}
+                        </span>
+                      </div>
+                      <div className="orchestrator-job-row">
+                        <span className="panel-caption">
+                          {describeJobProgress(job)}
+                        </span>
+                        <span className="orchestrator-job-actions">
+                          <span className="panel-caption">
+                            {job.promptMode === "file"
+                              ? "Prompt file"
+                              : "Inline prompt"}
+                          </span>
+                          {job.status === "failed" && canRetryJob(job) ? (
+                            <button
+                              type="button"
+                              className="ghost-button"
+                              onClick={() =>
+                                props.onRetryFailedJob?.(job.jobId)
+                              }
+                              disabled={
+                                props.pending || !props.onRetryFailedJob
+                              }
+                            >
+                              Retry
+                            </button>
+                          ) : null}
+                          {job.status !== "queued" &&
+                          job.providerSessionId &&
+                          supportsProviderSessionResume(
+                            props.session?.cliProvider
+                          ) ? (
+                            <button
+                              type="button"
+                              className="ghost-button"
+                              aria-label={`Continue task: ${job.promptPreview}`}
+                              onClick={() =>
+                                setDelegateProviderSessionId(
+                                  job.providerSessionId ?? ""
+                                )
+                              }
+                              disabled={props.pending}
+                            >
+                              Continue
+                            </button>
+                          ) : null}
+                          {job.status === "queued" ? (
+                            <button
+                              type="button"
+                              className="ghost-button danger-button queued-job-delete-button"
+                              onClick={() => props.onDeleteQueuedJob(job.jobId)}
+                              disabled={props.pending}
+                            >
+                              Remove
+                            </button>
+                          ) : null}
+                        </span>
+                      </div>
+                    </article>
                   ))}
                 </div>
-              </div>
-            </section>
-            <div className="orchestrator-queue-lanes">
-              {queueBoardSections.map(({ label, status, items }) => (
-                <div
-                  key={label}
-                  className="orchestrator-queue-lane"
-                  data-status={status}
-                >
-                  <div className="orchestrator-queue-lane-header">
-                    <strong>{label}</strong>
-                    <span
-                      className="orchestrator-job-counter"
-                      data-status={status}
-                    >
-                      {items.length}
-                    </span>
-                  </div>
-                  {items.length > 0 ? (
-                    <div className="orchestrator-queue-lane-list">
-                      {items.slice(0, 2).map((item) => (
-                        <div
-                          key={item.jobId}
-                          className="orchestrator-queue-board-card"
-                        >
-                          <strong>
-                            {label}: {item.promptPreview}
-                          </strong>
-                          <span>{describeJobProgress(item)}</span>
-                          <div className="orchestrator-queue-board-actions">
-                            {item.status === "queued" ? (
-                              <button
-                                type="button"
-                                className="ghost-button danger-button queued-job-delete-button"
-                                onClick={() =>
-                                  props.onDeleteQueuedJob(item.jobId)
-                                }
-                                disabled={props.pending}
-                              >
-                                Quick delete
-                              </button>
-                            ) : item.status === "failed" &&
-                              canRetryJob(item) ? (
-                              <button
-                                type="button"
-                                className="ghost-button"
-                                onClick={() =>
-                                  props.onRetryFailedJob?.(item.jobId)
-                                }
-                                disabled={
-                                  props.pending || !props.onRetryFailedJob
-                                }
-                              >
-                                Quick retry
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                className="ghost-button"
-                                onClick={() =>
-                                  handleSelectWorkspaceView(
-                                    item.status === "running"
-                                      ? "terminal"
-                                      : "queue"
-                                  )
-                                }
-                              >
-                                Open
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="panel-caption">
-                      No {label.toLowerCase()} items.
-                    </div>
-                  )}
+              ) : (
+                <div className="panel-caption">
+                  Delegated prompts appear here so you can see what is running,
+                  what is queued, and what already finished.
                 </div>
-              ))}
+              )}
             </div>
           </div>
-          <div className="orchestrator-job-stack-panel">
-            {visibleJobs.length > 0 ? (
-              <div className="orchestrator-job-list">
-                {visibleJobs.map((job) => (
-                  <article
-                    key={job.jobId}
-                    className={`orchestrator-job-item orchestrator-job-item-${job.status}`}
+        ) : null}
+
+        {activeWorkspaceView === "schedules" ? (
+          <div className="settings-card orchestrator-schedule-stack orchestrator-workspace-panel orchestrator-board-card orchestrator-board-card-schedules is-active">
+            <div className="orchestrator-job-stack-header">
+              <div className="orchestrator-job-stack-toggle-copy">
+                <span className="eyebrow">Recurring schedules</span>
+                <strong>
+                  Automate prompts for this session and optionally email the
+                  captured output.
+                </strong>
+              </div>
+              <div className="orchestrator-job-stack-stats">
+                <span className="orchestrator-job-counter">
+                  {enabledScheduleCount} active
+                </span>
+                <span className="orchestrator-job-counter">
+                  {props.schedules.length - enabledScheduleCount} paused
+                </span>
+                {!scheduleFormVisible && (
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={handleOpenCreateSchedule}
+                    disabled={props.pending}
                   >
-                    <div className="orchestrator-job-row">
-                      <div className="orchestrator-job-title">
-                        <span className="scope-chip">
-                          {humanizeJobStatus(job.status)}
-                        </span>
-                        <strong>{job.promptPreview}</strong>
-                        {job.masterBatchId ? (
-                          <span
-                            className="scope-chip orchestrator-master-origin-chip"
-                            title={`Master batch ${job.masterBatchId}${job.masterItemId ? ` · item ${job.masterItemId}` : ""}`}
-                          >
-                            Dispatched from master
+                    Create schedule
+                  </button>
+                )}
+              </div>
+            </div>
+            <div
+              id={scheduleSectionId}
+              className="orchestrator-job-stack-panel"
+            >
+              {scheduleFormVisible ? (
+                <OrchestratorScheduleForm
+                  key={editingSchedule?.scheduleId ?? "new"}
+                  pending={props.pending}
+                  schedule={editingSchedule}
+                  availableCustomAgents={props.session.availableCustomAgents}
+                  emailDeliveryAvailable={
+                    !!props.capabilities?.emailDeliveryAvailable
+                  }
+                  emailFromAddress={props.capabilities?.emailFromAddress}
+                  onCancel={() => {
+                    setScheduleFormVisible(false);
+                    setEditingSchedule(undefined);
+                  }}
+                  onSave={handleSaveSchedule}
+                />
+              ) : props.schedules.length > 0 ? (
+                <div className="orchestrator-job-list">
+                  {props.schedules.map((schedule) => (
+                    <article
+                      key={schedule.scheduleId}
+                      className={`orchestrator-job-item orchestrator-schedule-item ${schedule.enabled ? "orchestrator-schedule-item-enabled" : "orchestrator-schedule-item-paused"}`}
+                    >
+                      <div className="orchestrator-job-row">
+                        <div className="orchestrator-job-title">
+                          <span className="scope-chip">
+                            {schedule.enabled ? "Active" : "Paused"}
                           </span>
-                        ) : null}
-                        {job.providerSessionId ? (
-                          <span
-                            className="panel-caption orchestrator-job-session-id"
-                            title={job.providerSessionId}
-                          >
-                            Coding agent session ID: {job.providerSessionId}
-                          </span>
-                        ) : null}
-                        {job.attachment ? (
-                          <span className="panel-caption">
-                            {job.attachment.name}
-                          </span>
-                        ) : null}
-                      </div>
-                      <span className="panel-caption">
-                        {formatJobTimestamp(job)}
-                      </span>
-                    </div>
-                    <div className="orchestrator-job-row">
-                      <span className="panel-caption">
-                        {describeJobProgress(job)}
-                      </span>
-                      <span className="orchestrator-job-actions">
+                          <strong>{schedule.title}</strong>
+                        </div>
                         <span className="panel-caption">
-                          {job.promptMode === "file"
-                            ? "Prompt file"
-                            : "Inline prompt"}
+                          Next run {formatTimestamp(schedule.nextRunAt)}
                         </span>
-                        {job.status === "failed" && canRetryJob(job) ? (
+                      </div>
+                      <div className="panel-caption orchestrator-schedule-summary">
+                        {describeSchedule(schedule)}
+                      </div>
+                      <div className="panel-caption orchestrator-schedule-prompt">
+                        {schedule.prompt}
+                      </div>
+                      <div className="orchestrator-job-row">
+                        <span className="panel-caption">
+                          {schedule.emailTo
+                            ? `Emails ${schedule.emailTo}`
+                            : "In-app only"}
+                          {" • "}
+                          {schedule.totalRuns} total run
+                          {schedule.totalRuns === 1 ? "" : "s"}
+                          {schedule.failedRuns > 0
+                            ? ` • ${schedule.failedRuns} failed`
+                            : ""}
+                          {schedule.lastJobStatus
+                            ? ` • Last status ${humanizeJobStatus(schedule.lastJobStatus)}`
+                            : ""}
+                        </span>
+                        <span className="orchestrator-job-actions">
                           <button
                             type="button"
                             className="ghost-button"
-                            onClick={() => props.onRetryFailedJob?.(job.jobId)}
-                            disabled={props.pending || !props.onRetryFailedJob}
-                          >
-                            Retry
-                          </button>
-                        ) : null}
-                        {job.status !== "queued" &&
-                        job.providerSessionId &&
-                        supportsProviderSessionResume(
-                          props.session?.cliProvider
-                        ) ? (
-                          <button
-                            type="button"
-                            className="ghost-button"
-                            aria-label={`Continue task: ${job.promptPreview}`}
                             onClick={() =>
-                              setDelegateProviderSessionId(
-                                job.providerSessionId ?? ""
+                              props.onUpdateSchedule(schedule.scheduleId, {
+                                title: schedule.title,
+                                prompt: schedule.prompt,
+                                frequency: schedule.frequency,
+                                timeOfDay: schedule.timeOfDay,
+                                timezone: schedule.timezone,
+                                dayOfWeek: schedule.dayOfWeek,
+                                dayOfMonth: schedule.dayOfMonth,
+                                customAgentId: schedule.customAgentId ?? null,
+                                emailTo: schedule.emailTo ?? null,
+                                enabled: !schedule.enabled,
+                              })
+                            }
+                            disabled={props.pending}
+                          >
+                            {schedule.enabled ? "Pause" : "Resume"}
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            onClick={() => handleEditSchedule(schedule)}
+                            disabled={props.pending}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost-button danger-button"
+                            onClick={() =>
+                              props.onDeleteSchedule(
+                                schedule.scheduleId,
+                                schedule.sessionId
                               )
                             }
                             disabled={props.pending}
                           >
-                            Continue
+                            Delete
                           </button>
-                        ) : null}
-                        {job.status === "queued" ? (
-                          <button
-                            type="button"
-                            className="ghost-button danger-button queued-job-delete-button"
-                            onClick={() => props.onDeleteQueuedJob(job.jobId)}
-                            disabled={props.pending}
-                          >
-                            Remove
-                          </button>
-                        ) : null}
-                      </span>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <div className="panel-caption">
-                Delegated prompts appear here so you can see what is running,
-                what is queued, and what already finished.
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div
-          className={`settings-card orchestrator-schedule-stack orchestrator-workspace-panel orchestrator-board-card orchestrator-board-card-schedules ${
-            activeWorkspaceView === "schedules" ? "is-active" : ""
-          }`}
-          data-mobile-visible={activeWorkspaceView === "schedules"}
-          hidden={activeWorkspaceView !== "schedules"}
-        >
-          <div className="orchestrator-job-stack-header">
-            <div className="orchestrator-job-stack-toggle-copy">
-              <span className="eyebrow">Recurring schedules</span>
-              <strong>
-                Automate prompts for this session and optionally email the
-                captured output.
-              </strong>
-            </div>
-            <div className="orchestrator-job-stack-stats">
-              <span className="orchestrator-job-counter">
-                {enabledScheduleCount} active
-              </span>
-              <span className="orchestrator-job-counter">
-                {props.schedules.length - enabledScheduleCount} paused
-              </span>
-              {!scheduleFormVisible && (
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={handleOpenCreateSchedule}
-                  disabled={props.pending}
-                >
-                  Create schedule
-                </button>
+                        </span>
+                      </div>
+                      {schedule.lastEmailError ? (
+                        <div className="panel-caption orchestrator-schedule-error">
+                          Last email attempt failed: {schedule.lastEmailError}
+                        </div>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="panel-caption">
+                  Create a recurring prompt for routines like a morning news
+                  summary, a scheduled code review, or a daily status email.
+                </div>
               )}
             </div>
           </div>
-          <div id={scheduleSectionId} className="orchestrator-job-stack-panel">
-            {scheduleFormVisible ? (
-              <OrchestratorScheduleForm
-                key={editingSchedule?.scheduleId ?? "new"}
-                pending={props.pending}
-                schedule={editingSchedule}
-                availableCustomAgents={props.session.availableCustomAgents}
-                emailDeliveryAvailable={
-                  !!props.capabilities?.emailDeliveryAvailable
-                }
-                emailFromAddress={props.capabilities?.emailFromAddress}
-                onCancel={() => {
-                  setScheduleFormVisible(false);
-                  setEditingSchedule(undefined);
-                }}
-                onSave={handleSaveSchedule}
-              />
-            ) : props.schedules.length > 0 ? (
-              <div className="orchestrator-job-list">
-                {props.schedules.map((schedule) => (
-                  <article
-                    key={schedule.scheduleId}
-                    className={`orchestrator-job-item orchestrator-schedule-item ${schedule.enabled ? "orchestrator-schedule-item-enabled" : "orchestrator-schedule-item-paused"}`}
-                  >
-                    <div className="orchestrator-job-row">
-                      <div className="orchestrator-job-title">
-                        <span className="scope-chip">
-                          {schedule.enabled ? "Active" : "Paused"}
-                        </span>
-                        <strong>{schedule.title}</strong>
-                      </div>
-                      <span className="panel-caption">
-                        Next run {formatTimestamp(schedule.nextRunAt)}
-                      </span>
-                    </div>
-                    <div className="panel-caption orchestrator-schedule-summary">
-                      {describeSchedule(schedule)}
-                    </div>
-                    <div className="panel-caption orchestrator-schedule-prompt">
-                      {schedule.prompt}
-                    </div>
-                    <div className="orchestrator-job-row">
-                      <span className="panel-caption">
-                        {schedule.emailTo
-                          ? `Emails ${schedule.emailTo}`
-                          : "In-app only"}
-                        {" • "}
-                        {schedule.totalRuns} total run
-                        {schedule.totalRuns === 1 ? "" : "s"}
-                        {schedule.failedRuns > 0
-                          ? ` • ${schedule.failedRuns} failed`
-                          : ""}
-                        {schedule.lastJobStatus
-                          ? ` • Last status ${humanizeJobStatus(schedule.lastJobStatus)}`
-                          : ""}
-                      </span>
-                      <span className="orchestrator-job-actions">
-                        <button
-                          type="button"
-                          className="ghost-button"
-                          onClick={() =>
-                            props.onUpdateSchedule(schedule.scheduleId, {
-                              title: schedule.title,
-                              prompt: schedule.prompt,
-                              frequency: schedule.frequency,
-                              timeOfDay: schedule.timeOfDay,
-                              timezone: schedule.timezone,
-                              dayOfWeek: schedule.dayOfWeek,
-                              dayOfMonth: schedule.dayOfMonth,
-                              customAgentId: schedule.customAgentId ?? null,
-                              emailTo: schedule.emailTo ?? null,
-                              enabled: !schedule.enabled,
-                            })
-                          }
-                          disabled={props.pending}
-                        >
-                          {schedule.enabled ? "Pause" : "Resume"}
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost-button"
-                          onClick={() => handleEditSchedule(schedule)}
-                          disabled={props.pending}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost-button danger-button"
-                          onClick={() =>
-                            props.onDeleteSchedule(
-                              schedule.scheduleId,
-                              schedule.sessionId
-                            )
-                          }
-                          disabled={props.pending}
-                        >
-                          Delete
-                        </button>
-                      </span>
-                    </div>
-                    {schedule.lastEmailError ? (
-                      <div className="panel-caption orchestrator-schedule-error">
-                        Last email attempt failed: {schedule.lastEmailError}
-                      </div>
-                    ) : null}
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <div className="panel-caption">
-                Create a recurring prompt for routines like a morning news
-                summary, a scheduled code review, or a daily status email.
-              </div>
-            )}
-          </div>
-        </div>
+        ) : null}
 
         <div
           className={`terminal-shell orchestrator-workspace-panel orchestrator-board-card orchestrator-board-card-terminal ${
@@ -2735,115 +2739,115 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
           </div>
         ) : null}
 
-        <div
-          className={`orchestrator-control-grid orchestrator-workspace-panel orchestrator-board-card orchestrator-board-card-delegate ${
-            activeWorkspaceView === "delegate" ? "is-active" : ""
-          }`}
-          data-mobile-visible={activeWorkspaceView === "delegate"}
-          hidden={activeWorkspaceView !== "delegate"}
-        >
-          <div className="settings-card orchestrator-primary-action">
-            <label className="field-group grow">
-              <span>Delegate a CLI task</span>
-              <SingleAttachmentPicker
-                file={delegateAttachment}
-                pending={props.pending}
-                onChange={setDelegateAttachment}
-              />
-              <textarea
-                className="orchestrator-delegate-input"
-                value={delegatePrompt}
-                onChange={(event) => setDelegatePrompt(event.target.value)}
-                rows={5}
-                placeholder={delegatePromptPlaceholder(
-                  props.session,
-                  activeJob
-                )}
-              />
-            </label>
-            {supportsProviderSessionResume(props.session.cliProvider) ? (
-              <label className="field-group">
-                <span>Continue from previous session ID</span>
-                <input
-                  value={delegateProviderSessionId}
-                  onChange={(event) =>
-                    setDelegateProviderSessionId(event.target.value)
-                  }
-                  placeholder="Leave blank to start a fresh task session"
-                  autoComplete="off"
+        {activeWorkspaceView === "delegate" ? (
+          <div className="orchestrator-control-grid orchestrator-workspace-panel orchestrator-board-card orchestrator-board-card-delegate is-active">
+            <div className="settings-card orchestrator-primary-action">
+              <label className="field-group grow">
+                <span>Delegate a CLI task</span>
+                <SingleAttachmentPicker
+                  file={delegateAttachment}
+                  pending={props.pending}
+                  onChange={setDelegateAttachment}
                 />
-                <small className="field-note">
-                  {delegateProviderSessionId.trim()
-                    ? "Used only for this delegated task."
-                    : "Leave blank to always start a fresh coding agent session."}
-                </small>
+                <textarea
+                  className="orchestrator-delegate-input"
+                  value={delegatePrompt}
+                  onChange={(event) => setDelegatePrompt(event.target.value)}
+                  rows={5}
+                  placeholder={delegatePromptPlaceholder(
+                    props.session,
+                    activeJob
+                  )}
+                />
               </label>
-            ) : null}
-            <div className="composer-footer orchestrator-delegate-footer">
-              <div className="composer-meta">
-                <span className="orchestrator-command-hint">
-                  Uses{" "}
-                  <code>
-                    {buildDelegationCommandHint(
-                      props.session,
-                      delegateProviderSessionId
-                    )}
-                  </code>
-                </span>
-                <span>
-                  Custom agent: {selectedSavedCustomAgent?.name ?? "None"}
-                </span>
-                {delegateProviderSessionId.trim() ? (
-                  <span>
-                    Next task resumes coding agent session{" "}
-                    {delegateProviderSessionId.trim()}
+              {supportsProviderSessionResume(props.session.cliProvider) ? (
+                <label className="field-group">
+                  <span>Continue from previous session ID</span>
+                  <input
+                    value={delegateProviderSessionId}
+                    onChange={(event) =>
+                      setDelegateProviderSessionId(event.target.value)
+                    }
+                    placeholder="Leave blank to start a fresh task session"
+                    autoComplete="off"
+                  />
+                  <small className="field-note">
+                    {delegateProviderSessionId.trim()
+                      ? "Used only for this delegated task."
+                      : "Leave blank to always start a fresh coding agent session."}
+                  </small>
+                </label>
+              ) : null}
+              <div className="composer-footer orchestrator-delegate-footer">
+                <div className="composer-meta">
+                  <span className="orchestrator-command-hint">
+                    Uses{" "}
+                    <code>
+                      {buildDelegationCommandHint(
+                        props.session,
+                        delegateProviderSessionId
+                      )}
+                    </code>
                   </span>
-                ) : supportsProviderSessionResume(props.session.cliProvider) ? (
                   <span>
-                    {props.session.cliProvider === "copilot"
-                      ? "Blank starts a fresh Copilot task session."
-                      : props.session.cliProvider === "antigravity"
-                        ? "Blank starts a fresh Google Antigravity conversation."
-                        : "Set a coding agent session ID to continue an existing conversation."}
+                    Custom agent: {selectedSavedCustomAgent?.name ?? "None"}
                   </span>
-                ) : null}
-                <span>
-                  {activeJob
-                    ? `${queuedJobs.length} already queued • starts automatically when the pane is free`
-                    : "Starts immediately in the current tmux pane"}
-                </span>
-              </div>
-              <button
-                type="button"
-                className="primary-button"
-                aria-label={props.pending ? "Queueing..." : delegateButtonLabel}
-                disabled={
-                  props.pending ||
-                  (!delegatePrompt.trim() && !delegateAttachment)
-                }
-                onClick={() => {
-                  props.onDelegate({
-                    prompt: delegatePrompt.trim(),
-                    attachment: delegateAttachment,
-                    providerSessionId:
-                      delegateProviderSessionId.trim() || undefined,
-                  });
-                  setDelegatePrompt("");
-                  setDelegateProviderSessionId("");
-                  setDelegateAttachment(undefined);
-                }}
-              >
-                <ButtonContent
-                  icon={<DelegateIcon />}
-                  label={props.pending ? "Queueing..." : delegateButtonLabel}
-                  compactLabel={
-                    props.pending ? "Queueing..." : delegateButtonCompactLabel
+                  {delegateProviderSessionId.trim() ? (
+                    <span>
+                      Next task resumes coding agent session{" "}
+                      {delegateProviderSessionId.trim()}
+                    </span>
+                  ) : supportsProviderSessionResume(
+                      props.session.cliProvider
+                    ) ? (
+                    <span>
+                      {props.session.cliProvider === "copilot"
+                        ? "Blank starts a fresh Copilot task session."
+                        : props.session.cliProvider === "antigravity"
+                          ? "Blank starts a fresh Google Antigravity conversation."
+                          : "Set a coding agent session ID to continue an existing conversation."}
+                    </span>
+                  ) : null}
+                  <span>
+                    {activeJob
+                      ? `${queuedJobs.length} already queued • starts automatically when the pane is free`
+                      : "Starts immediately in the current tmux pane"}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="primary-button"
+                  aria-label={
+                    props.pending ? "Queueing..." : delegateButtonLabel
                   }
-                />
-              </button>
+                  disabled={
+                    props.pending ||
+                    (!delegatePrompt.trim() && !delegateAttachment)
+                  }
+                  onClick={() => {
+                    props.onDelegate({
+                      prompt: delegatePrompt.trim(),
+                      attachment: delegateAttachment,
+                      providerSessionId:
+                        delegateProviderSessionId.trim() || undefined,
+                    });
+                    setDelegatePrompt("");
+                    setDelegateProviderSessionId("");
+                    setDelegateAttachment(undefined);
+                  }}
+                >
+                  <ButtonContent
+                    icon={<DelegateIcon />}
+                    label={props.pending ? "Queueing..." : delegateButtonLabel}
+                    compactLabel={
+                      props.pending ? "Queueing..." : delegateButtonCompactLabel
+                    }
+                  />
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        ) : null}
       </div>
 
       <nav

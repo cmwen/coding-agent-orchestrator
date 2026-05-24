@@ -2111,7 +2111,6 @@ describe("OrchestratorPane", () => {
     const queuePanel = queuePanelId
       ? document.getElementById(queuePanelId)
       : undefined;
-    expect(queuePanel?.getAttribute("aria-hidden")).toBe("false");
     expect(queuePanel).toBeTruthy();
     const queuePanelContent = within(queuePanel as HTMLElement);
     expect(
@@ -2611,6 +2610,110 @@ describe("OrchestratorPane", () => {
     expect(
       within(schedulesWorkspace as HTMLElement).getByText("Nightly review")
     ).toBeTruthy();
+  });
+
+  it("renders only the active queue, delegate, and schedules workspaces", async () => {
+    const user = userEvent.setup();
+    class MockEventSource {
+      addEventListener = vi.fn();
+      removeEventListener = vi.fn();
+      close = vi.fn();
+      onerror: (() => void) | null = null;
+    }
+    vi.stubGlobal("EventSource", MockEventSource);
+
+    render(
+      <OrchestratorPane
+        capabilities={{
+          available: true,
+          defaultProjectPath: "/tmp/project",
+          recentProjectPaths: [],
+          tmuxInstalled: true,
+          copilotInstalled: true,
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+        }}
+        session={{
+          sessionId: "2026-03-20-repo-support",
+          agentId: "copilot-orchestrator",
+          title: "Repo support",
+          startedAt: "2026-03-20T12:00:00Z",
+          updatedAt: "2026-03-20T12:05:00Z",
+          summary: "Handle runtime support work",
+          projectPath: "/tmp/project",
+          projectPurpose: "Handle runtime support work",
+          cliProvider: "copilot",
+          model: "gpt-5",
+          tmuxSessionName: "coding-agent-orchestrator-orchestrator",
+          tmuxWindowName: "project-repo-support-0001",
+          tmuxPaneId: "%42",
+          status: "idle",
+          activeJobId: undefined,
+          lastJobId: undefined,
+          availableCustomAgents: [],
+          selectedCustomAgentId: undefined,
+          executionMode: "standard",
+          sessionDirectory: "/tmp/session",
+          manifestPath:
+            "agents/copilot-orchestrator/history/2026-03/2026-03-20-repo-support/SESSION.md",
+          jobs: [],
+          terminalTail: "",
+          logSize: 0,
+        }}
+        models={[
+          {
+            id: "gpt-5",
+            displayName: "GPT-5",
+            runtimeProvider: "copilot",
+            supportedReasoningEfforts: [],
+          },
+        ]}
+        defaultModelId="gpt-5"
+        projectPathSuggestions={["/tmp/project"]}
+        pending={false}
+        onCreateSession={() => undefined}
+        onUpdateSession={() => undefined}
+        onDelegate={() => undefined}
+        onSendInput={() => undefined}
+        onCancelJob={() => undefined}
+        onRestartSession={() => undefined}
+        onDeleteQueuedJob={() => undefined}
+        schedules={[
+          {
+            scheduleId: "schedule-1",
+            sessionId: "2026-03-20-repo-support",
+            title: "Nightly review",
+            prompt: "Summarize the current state of work.",
+            frequency: "daily",
+            timezone: "UTC",
+            timeOfDay: "09:00",
+            enabled: true,
+            nextRunAt: "2026-03-21T09:00:00Z",
+            createdAt: "2026-03-20T12:00:00Z",
+            updatedAt: "2026-03-20T12:05:00Z",
+            totalRuns: 2,
+            failedRuns: 0,
+          },
+        ]}
+        onCreateSchedule={() => undefined}
+        onUpdateSchedule={() => undefined}
+        onDeleteSchedule={() => undefined}
+        onSessionUpdate={() => undefined}
+      />
+    );
+
+    expect(screen.getByText("Delegate a CLI task")).toBeTruthy();
+    expect(screen.queryByText("Task queue")).toBeNull();
+    expect(screen.queryByText("Recurring schedules")).toBeNull();
+
+    await openDesktopWorkspaceView(user, "queue");
+    expect(screen.getByText("Task queue")).toBeTruthy();
+    expect(screen.queryByText("Delegate a CLI task")).toBeNull();
+    expect(screen.queryByText("Recurring schedules")).toBeNull();
+
+    await openDesktopWorkspaceView(user, "schedules");
+    expect(screen.getByText("Recurring schedules")).toBeTruthy();
+    expect(screen.queryByText("Task queue")).toBeNull();
+    expect(screen.queryByText("Delegate a CLI task")).toBeNull();
   });
 
   it("routes queued task deletion through the provided handler", async () => {
