@@ -1,0 +1,35 @@
+{
+  "name": "coding-agent-orchestrator",
+  "description": "Local orchestration service for GitHub repo and coding-agent task management",
+  "type": "node",
+  "repo": "https://github.com/cmwen/coding-agent-orchestrator",
+  "localPath": "/home/cmwen/dev/coding-agent-orchestrator",
+  "window": "coding-agent-orchestrator",
+  "ports": [
+    {
+      "port": 8791,
+      "name": "api",
+      "description": "Orchestration API port"
+    }
+  ],
+  "tailscale": {
+    "export": true,
+    "httpsPort": 7446,
+    "targetPort": 8791
+  },
+  "environment": {
+    "NODE_ENV": "production"
+  },
+  "command": {
+    "type": "shell",
+    "cwd": "/home/cmwen/dev/coding-agent-orchestrator",
+    "command": "pnpm dev"
+  },
+  "dependencies": [],
+  "healthCheck": {
+    "type": "http",
+    "interval": 5,
+    "timeout": 10,
+    "target": "http://127.0.0.1:8791/health"
+  }
+}
