@@ -23,18 +23,120 @@ type ChatProviderDescriptor = z.infer<typeof chatProviderDescriptorSchema>;
 declare const orchestratorCliProviderCapabilitiesSchema: z.ZodObject<{
     supportsCustomAgents: z.ZodDefault<z.ZodBoolean>;
     supportsExecutionMode: z.ZodDefault<z.ZodBoolean>;
+    supportsProviderSessionResume: z.ZodOptional<z.ZodBoolean>;
 }, z.core.$strip>;
 type OrchestratorCliProviderCapabilities = z.infer<typeof orchestratorCliProviderCapabilitiesSchema>;
 declare const orchestratorCliProviderDescriptorSchema: z.ZodObject<{
     id: z.ZodString;
     displayName: z.ZodString;
     description: z.ZodOptional<z.ZodString>;
+    command: z.ZodOptional<z.ZodString>;
+    installed: z.ZodOptional<z.ZodBoolean>;
     capabilities: z.ZodObject<{
         supportsCustomAgents: z.ZodDefault<z.ZodBoolean>;
         supportsExecutionMode: z.ZodDefault<z.ZodBoolean>;
+        supportsProviderSessionResume: z.ZodOptional<z.ZodBoolean>;
     }, z.core.$strip>;
 }, z.core.$strip>;
 type OrchestratorCliProviderDescriptor = z.infer<typeof orchestratorCliProviderDescriptorSchema>;
+declare const providerCreditStatusKindSchema: z.ZodEnum<{
+    error: "error";
+    live: "live";
+    local: "local";
+    interactive: "interactive";
+    unavailable: "unavailable";
+    "not-installed": "not-installed";
+}>;
+type ProviderCreditStatusKind = z.infer<typeof providerCreditStatusKindSchema>;
+declare const providerCreditSourceSchema: z.ZodEnum<{
+    "live-cli": "live-cli";
+    "local-cli": "local-cli";
+    "provider-dashboard": "provider-dashboard";
+    none: "none";
+}>;
+type ProviderCreditSource = z.infer<typeof providerCreditSourceSchema>;
+declare const providerCreditMetricSchema: z.ZodObject<{
+    id: z.ZodString;
+    label: z.ZodString;
+    value: z.ZodString;
+    usedPercent: z.ZodOptional<z.ZodNumber>;
+    remainingPercent: z.ZodOptional<z.ZodNumber>;
+    resetAt: z.ZodOptional<z.ZodString>;
+    detail: z.ZodOptional<z.ZodString>;
+}, z.core.$strip>;
+type ProviderCreditMetric = z.infer<typeof providerCreditMetricSchema>;
+declare const providerCreditStatusSchema: z.ZodObject<{
+    providerId: z.ZodString;
+    displayName: z.ZodString;
+    installed: z.ZodBoolean;
+    status: z.ZodEnum<{
+        error: "error";
+        live: "live";
+        local: "local";
+        interactive: "interactive";
+        unavailable: "unavailable";
+        "not-installed": "not-installed";
+    }>;
+    source: z.ZodEnum<{
+        "live-cli": "live-cli";
+        "local-cli": "local-cli";
+        "provider-dashboard": "provider-dashboard";
+        none: "none";
+    }>;
+    summary: z.ZodString;
+    plan: z.ZodOptional<z.ZodString>;
+    metrics: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        label: z.ZodString;
+        value: z.ZodString;
+        usedPercent: z.ZodOptional<z.ZodNumber>;
+        remainingPercent: z.ZodOptional<z.ZodNumber>;
+        resetAt: z.ZodOptional<z.ZodString>;
+        detail: z.ZodOptional<z.ZodString>;
+    }, z.core.$strip>>>;
+    accountUrl: z.ZodOptional<z.ZodString>;
+    actionLabel: z.ZodOptional<z.ZodString>;
+    checkedAt: z.ZodString;
+}, z.core.$strip>;
+type ProviderCreditStatus = z.infer<typeof providerCreditStatusSchema>;
+declare const providerCreditsDashboardSchema: z.ZodObject<{
+    checkedAt: z.ZodString;
+    cacheTtlSeconds: z.ZodNumber;
+    providers: z.ZodArray<z.ZodObject<{
+        providerId: z.ZodString;
+        displayName: z.ZodString;
+        installed: z.ZodBoolean;
+        status: z.ZodEnum<{
+            error: "error";
+            live: "live";
+            local: "local";
+            interactive: "interactive";
+            unavailable: "unavailable";
+            "not-installed": "not-installed";
+        }>;
+        source: z.ZodEnum<{
+            "live-cli": "live-cli";
+            "local-cli": "local-cli";
+            "provider-dashboard": "provider-dashboard";
+            none: "none";
+        }>;
+        summary: z.ZodString;
+        plan: z.ZodOptional<z.ZodString>;
+        metrics: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            id: z.ZodString;
+            label: z.ZodString;
+            value: z.ZodString;
+            usedPercent: z.ZodOptional<z.ZodNumber>;
+            remainingPercent: z.ZodOptional<z.ZodNumber>;
+            resetAt: z.ZodOptional<z.ZodString>;
+            detail: z.ZodOptional<z.ZodString>;
+        }, z.core.$strip>>>;
+        accountUrl: z.ZodOptional<z.ZodString>;
+        actionLabel: z.ZodOptional<z.ZodString>;
+        checkedAt: z.ZodString;
+    }, z.core.$strip>>;
+}, z.core.$strip>;
+type ProviderCreditsDashboard = z.infer<typeof providerCreditsDashboardSchema>;
 declare const reasoningEffortSchema: z.ZodEnum<{
     low: "low";
     medium: "medium";
@@ -1255,6 +1357,7 @@ declare const orchestratorSessionSummarySchema: z.ZodObject<{
     }, z.core.$strip>>>;
     selectedCustomAgentId: z.ZodOptional<z.ZodString>;
     providerSessionId: z.ZodOptional<z.ZodString>;
+    reuseProviderSession: z.ZodOptional<z.ZodBoolean>;
     executionMode: z.ZodOptional<z.ZodEnum<{
         standard: "standard";
         fleet: "fleet";
@@ -1305,6 +1408,7 @@ declare const orchestratorSessionSchema: z.ZodObject<{
     }, z.core.$strip>>>;
     selectedCustomAgentId: z.ZodOptional<z.ZodString>;
     providerSessionId: z.ZodOptional<z.ZodString>;
+    reuseProviderSession: z.ZodOptional<z.ZodBoolean>;
     executionMode: z.ZodOptional<z.ZodEnum<{
         standard: "standard";
         fleet: "fleet";
@@ -1383,14 +1487,30 @@ declare const orchestratorCapabilitiesSchema: z.ZodObject<{
     codexInstalled: z.ZodOptional<z.ZodBoolean>;
     opencodeInstalled: z.ZodOptional<z.ZodBoolean>;
     antigravityInstalled: z.ZodOptional<z.ZodBoolean>;
+    grokInstalled: z.ZodOptional<z.ZodBoolean>;
     defaultCliProvider: z.ZodOptional<z.ZodString>;
     cliProviders: z.ZodOptional<z.ZodArray<z.ZodObject<{
         id: z.ZodString;
         displayName: z.ZodString;
         description: z.ZodOptional<z.ZodString>;
+        command: z.ZodOptional<z.ZodString>;
+        installed: z.ZodOptional<z.ZodBoolean>;
         capabilities: z.ZodObject<{
             supportsCustomAgents: z.ZodDefault<z.ZodBoolean>;
             supportsExecutionMode: z.ZodDefault<z.ZodBoolean>;
+            supportsProviderSessionResume: z.ZodOptional<z.ZodBoolean>;
+        }, z.core.$strip>;
+    }, z.core.$strip>>>;
+    supportedCliProviders: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        displayName: z.ZodString;
+        description: z.ZodOptional<z.ZodString>;
+        command: z.ZodOptional<z.ZodString>;
+        installed: z.ZodOptional<z.ZodBoolean>;
+        capabilities: z.ZodObject<{
+            supportsCustomAgents: z.ZodDefault<z.ZodBoolean>;
+            supportsExecutionMode: z.ZodDefault<z.ZodBoolean>;
+            supportsProviderSessionResume: z.ZodOptional<z.ZodBoolean>;
         }, z.core.$strip>;
     }, z.core.$strip>>>;
     tmuxSessionName: z.ZodString;
@@ -2291,6 +2411,7 @@ declare const orchestratorSessionCreateSchema: z.ZodObject<{
     model: z.ZodDefault<z.ZodString>;
     selectedCustomAgentId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     providerSessionId: z.ZodOptional<z.ZodString>;
+    reuseProviderSession: z.ZodOptional<z.ZodBoolean>;
     executionMode: z.ZodOptional<z.ZodEnum<{
         standard: "standard";
         fleet: "fleet";
@@ -2304,6 +2425,8 @@ declare const orchestratorSessionUpdateSchema: z.ZodObject<{
     cliProvider: z.ZodOptional<z.ZodString>;
     model: z.ZodString;
     selectedCustomAgentId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    providerSessionId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    reuseProviderSession: z.ZodOptional<z.ZodBoolean>;
     executionMode: z.ZodOptional<z.ZodEnum<{
         standard: "standard";
         fleet: "fleet";
@@ -2665,4 +2788,4 @@ declare function readResponseErrorMessage(response: Pick<Response, "status" | "t
  */
 declare function fetchJson<T>(resource: string, init?: RequestInit): Promise<T>;
 
-export { type AgentKind, type AgentSummary, type ApiError, type AttachmentMediaType, type AttachmentUpload, type ChatProviderCapabilities, type ChatProviderDescriptor, type ChatRequest, type ChatResponse, type ChatRuntimeConfig, type ChatSession, type ChatSessionSummary, type ChatStreamEvent, type ChatTurn, type CopilotCustomAgent, DEFAULT_CHAT_MODEL, DEFAULT_CHAT_PROVIDER, DEFAULT_ORCHESTRATOR_CLI_PROVIDER, type LlmQuotaSnapshot, type LlmRequestStats, type LlmSessionStats, type LlmTokenDetail, type MasterBatch, type MasterBatchApproval, type MasterBatchConfidence, type MasterBatchCreateRequest, type MasterBatchItem, type MasterBatchItemStatus, type MasterBatchStatus, type MasterBatchUpdateRequest, type McpServerConfig, type MemoryAnalysisEntryChange, type MemoryAnalysisRequest, type MemoryAnalysisResponse, type MemoryAnalysisTierSummary, type MemoryAnalysisToolExecution, type MemoryEntry, type MemoryTier, type ModelCatalog, type ModelDescriptor, type OrchestratorCapabilities, type OrchestratorCliProviderCapabilities, type OrchestratorCliProviderDescriptor, type OrchestratorDelegateRequest, type OrchestratorExecutionMode, type OrchestratorJob, type OrchestratorJobStatus, type OrchestratorPromptMode, type OrchestratorRepositoryDirectory, type OrchestratorRepositoryEntry, type OrchestratorRepositoryEntryKind, type OrchestratorRepositoryFile, type OrchestratorRepositoryFileState, type OrchestratorSchedule, type OrchestratorScheduleCreateRequest, type OrchestratorScheduleDayOfWeek, type OrchestratorScheduleFrequency, type OrchestratorScheduleUpdateRequest, type OrchestratorSession, type OrchestratorSessionCreateRequest, type OrchestratorSessionRole, type OrchestratorSessionStatus, type OrchestratorSessionSummary, type OrchestratorSessionUpdateRequest, type OrchestratorStructuredDiff, type OrchestratorStructuredDiffHunk, type OrchestratorStructuredDiffLine, type OrchestratorTerminalHistoryChunk, type OrchestratorTerminalInputRequest, type OrchestratorWorkingTree, type OrchestratorWorkingTreeDiff, type OrchestratorWorkingTreeDiffState, type OrchestratorWorkingTreeFile, type OrchestratorWorkingTreeFileStatus, type OrchestratorWorkingTreeState, type PartialChatRuntimeConfig, type PremiumUsage, type PremiumUsageTotals, type ReasoningEffort, type ScheduleTask, type ScheduleTaskCreateRequest, type ScheduleTaskRunStatus, type ScheduleTaskTargetKind, type ScheduleTaskUpdateRequest, type SkillDescriptor, type SkillScope, type StoredAttachment, type TurnSender, type WorkspaceSummary, agentKindSchema, agentSummarySchema, apiErrorSchema, attachmentMediaTypeSchema, attachmentUploadSchema, chatProviderCapabilitiesSchema, chatProviderDescriptorSchema, chatRequestSchema, chatResponseSchema, chatRuntimeConfigSchema, chatSessionSchema, chatSessionSummarySchema, chatStreamEventSchema, chatTurnSchema, copilotCustomAgentSchema, createDefaultChatRuntimeConfig, fetchJson, llmQuotaSnapshotSchema, llmRequestStatsSchema, llmSessionStatsSchema, llmTokenDetailSchema, masterBatchApprovalSchema, masterBatchConfidenceSchema, masterBatchCreateSchema, masterBatchItemSchema, masterBatchItemStatusSchema, masterBatchSchema, masterBatchStatusSchema, masterBatchUpdateSchema, mcpServerConfigSchema, memoryAnalysisEntryChangeSchema, memoryAnalysisRequestSchema, memoryAnalysisResponseSchema, memoryAnalysisTierSummarySchema, memoryAnalysisToolExecutionSchema, memoryEntrySchema, memoryTierSchema, mergeChatRuntimeConfigs, modelCatalogSchema, modelDescriptorSchema, normalizeApiErrorMessage, orchestratorCapabilitiesSchema, orchestratorCliProviderCapabilitiesSchema, orchestratorCliProviderDescriptorSchema, orchestratorDelegateRequestSchema, orchestratorExecutionModeSchema, orchestratorJobSchema, orchestratorJobStatusSchema, orchestratorPromptModeSchema, orchestratorRepositoryDirectorySchema, orchestratorRepositoryEntryKindSchema, orchestratorRepositoryEntrySchema, orchestratorRepositoryFileSchema, orchestratorRepositoryFileStateSchema, orchestratorScheduleCreateSchema, orchestratorScheduleDayOfWeekSchema, orchestratorScheduleFrequencySchema, orchestratorScheduleSchema, orchestratorScheduleUpdateSchema, orchestratorSessionCreateSchema, orchestratorSessionRoleSchema, orchestratorSessionSchema, orchestratorSessionStatusSchema, orchestratorSessionSummarySchema, orchestratorSessionUpdateSchema, orchestratorStructuredDiffHunkSchema, orchestratorStructuredDiffLineSchema, orchestratorStructuredDiffSchema, orchestratorTerminalHistoryChunkSchema, orchestratorTerminalInputSchema, orchestratorWorkingTreeDiffSchema, orchestratorWorkingTreeDiffStateSchema, orchestratorWorkingTreeFileSchema, orchestratorWorkingTreeFileStatusSchema, orchestratorWorkingTreeSchema, orchestratorWorkingTreeStateSchema, partialChatRuntimeConfigSchema, premiumUsageSchema, premiumUsageTotalsSchema, readResponseErrorMessage, reasoningEffortSchema, scheduleTaskCreateSchema, scheduleTaskRunStatusSchema, scheduleTaskSchema, scheduleTaskTargetKindSchema, scheduleTaskUpdateSchema, senderSchema, skillDescriptorSchema, skillScopeSchema, storedAttachmentSchema, workspaceSummarySchema };
+export { type AgentKind, type AgentSummary, type ApiError, type AttachmentMediaType, type AttachmentUpload, type ChatProviderCapabilities, type ChatProviderDescriptor, type ChatRequest, type ChatResponse, type ChatRuntimeConfig, type ChatSession, type ChatSessionSummary, type ChatStreamEvent, type ChatTurn, type CopilotCustomAgent, DEFAULT_CHAT_MODEL, DEFAULT_CHAT_PROVIDER, DEFAULT_ORCHESTRATOR_CLI_PROVIDER, type LlmQuotaSnapshot, type LlmRequestStats, type LlmSessionStats, type LlmTokenDetail, type MasterBatch, type MasterBatchApproval, type MasterBatchConfidence, type MasterBatchCreateRequest, type MasterBatchItem, type MasterBatchItemStatus, type MasterBatchStatus, type MasterBatchUpdateRequest, type McpServerConfig, type MemoryAnalysisEntryChange, type MemoryAnalysisRequest, type MemoryAnalysisResponse, type MemoryAnalysisTierSummary, type MemoryAnalysisToolExecution, type MemoryEntry, type MemoryTier, type ModelCatalog, type ModelDescriptor, type OrchestratorCapabilities, type OrchestratorCliProviderCapabilities, type OrchestratorCliProviderDescriptor, type OrchestratorDelegateRequest, type OrchestratorExecutionMode, type OrchestratorJob, type OrchestratorJobStatus, type OrchestratorPromptMode, type OrchestratorRepositoryDirectory, type OrchestratorRepositoryEntry, type OrchestratorRepositoryEntryKind, type OrchestratorRepositoryFile, type OrchestratorRepositoryFileState, type OrchestratorSchedule, type OrchestratorScheduleCreateRequest, type OrchestratorScheduleDayOfWeek, type OrchestratorScheduleFrequency, type OrchestratorScheduleUpdateRequest, type OrchestratorSession, type OrchestratorSessionCreateRequest, type OrchestratorSessionRole, type OrchestratorSessionStatus, type OrchestratorSessionSummary, type OrchestratorSessionUpdateRequest, type OrchestratorStructuredDiff, type OrchestratorStructuredDiffHunk, type OrchestratorStructuredDiffLine, type OrchestratorTerminalHistoryChunk, type OrchestratorTerminalInputRequest, type OrchestratorWorkingTree, type OrchestratorWorkingTreeDiff, type OrchestratorWorkingTreeDiffState, type OrchestratorWorkingTreeFile, type OrchestratorWorkingTreeFileStatus, type OrchestratorWorkingTreeState, type PartialChatRuntimeConfig, type PremiumUsage, type PremiumUsageTotals, type ProviderCreditMetric, type ProviderCreditSource, type ProviderCreditStatus, type ProviderCreditStatusKind, type ProviderCreditsDashboard, type ReasoningEffort, type ScheduleTask, type ScheduleTaskCreateRequest, type ScheduleTaskRunStatus, type ScheduleTaskTargetKind, type ScheduleTaskUpdateRequest, type SkillDescriptor, type SkillScope, type StoredAttachment, type TurnSender, type WorkspaceSummary, agentKindSchema, agentSummarySchema, apiErrorSchema, attachmentMediaTypeSchema, attachmentUploadSchema, chatProviderCapabilitiesSchema, chatProviderDescriptorSchema, chatRequestSchema, chatResponseSchema, chatRuntimeConfigSchema, chatSessionSchema, chatSessionSummarySchema, chatStreamEventSchema, chatTurnSchema, copilotCustomAgentSchema, createDefaultChatRuntimeConfig, fetchJson, llmQuotaSnapshotSchema, llmRequestStatsSchema, llmSessionStatsSchema, llmTokenDetailSchema, masterBatchApprovalSchema, masterBatchConfidenceSchema, masterBatchCreateSchema, masterBatchItemSchema, masterBatchItemStatusSchema, masterBatchSchema, masterBatchStatusSchema, masterBatchUpdateSchema, mcpServerConfigSchema, memoryAnalysisEntryChangeSchema, memoryAnalysisRequestSchema, memoryAnalysisResponseSchema, memoryAnalysisTierSummarySchema, memoryAnalysisToolExecutionSchema, memoryEntrySchema, memoryTierSchema, mergeChatRuntimeConfigs, modelCatalogSchema, modelDescriptorSchema, normalizeApiErrorMessage, orchestratorCapabilitiesSchema, orchestratorCliProviderCapabilitiesSchema, orchestratorCliProviderDescriptorSchema, orchestratorDelegateRequestSchema, orchestratorExecutionModeSchema, orchestratorJobSchema, orchestratorJobStatusSchema, orchestratorPromptModeSchema, orchestratorRepositoryDirectorySchema, orchestratorRepositoryEntryKindSchema, orchestratorRepositoryEntrySchema, orchestratorRepositoryFileSchema, orchestratorRepositoryFileStateSchema, orchestratorScheduleCreateSchema, orchestratorScheduleDayOfWeekSchema, orchestratorScheduleFrequencySchema, orchestratorScheduleSchema, orchestratorScheduleUpdateSchema, orchestratorSessionCreateSchema, orchestratorSessionRoleSchema, orchestratorSessionSchema, orchestratorSessionStatusSchema, orchestratorSessionSummarySchema, orchestratorSessionUpdateSchema, orchestratorStructuredDiffHunkSchema, orchestratorStructuredDiffLineSchema, orchestratorStructuredDiffSchema, orchestratorTerminalHistoryChunkSchema, orchestratorTerminalInputSchema, orchestratorWorkingTreeDiffSchema, orchestratorWorkingTreeDiffStateSchema, orchestratorWorkingTreeFileSchema, orchestratorWorkingTreeFileStatusSchema, orchestratorWorkingTreeSchema, orchestratorWorkingTreeStateSchema, partialChatRuntimeConfigSchema, premiumUsageSchema, premiumUsageTotalsSchema, providerCreditMetricSchema, providerCreditSourceSchema, providerCreditStatusKindSchema, providerCreditStatusSchema, providerCreditsDashboardSchema, readResponseErrorMessage, reasoningEffortSchema, scheduleTaskCreateSchema, scheduleTaskRunStatusSchema, scheduleTaskSchema, scheduleTaskTargetKindSchema, scheduleTaskUpdateSchema, senderSchema, skillDescriptorSchema, skillScopeSchema, storedAttachmentSchema, workspaceSummarySchema };

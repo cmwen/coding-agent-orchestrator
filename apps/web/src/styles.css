@@ -1351,6 +1351,165 @@ p {
   color: var(--danger-text);
 }
 
+.provider-credits-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.provider-credits-header,
+.provider-credit-card-header,
+.provider-credit-metric-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.provider-credits-header h3,
+.provider-credit-card h4 {
+  margin: 0.2rem 0 0;
+}
+
+.provider-credits-header .panel-caption {
+  max-width: 68ch;
+  margin-bottom: 0;
+}
+
+.provider-credits-timestamp,
+.provider-credit-loading {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.provider-credit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 0.9rem;
+}
+
+.provider-credit-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--card-bg) 88%, transparent);
+}
+
+.provider-credit-card-live {
+  border-color: color-mix(in srgb, var(--primary-to) 35%, var(--border-soft));
+}
+
+.provider-credit-plan {
+  display: inline-flex;
+  margin-top: 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.provider-credit-status {
+  flex: 0 0 auto;
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.provider-credit-status.status-live {
+  background: color-mix(in srgb, var(--primary-to) 15%, transparent);
+  color: var(--primary-to);
+}
+
+.provider-credit-status.status-local {
+  background: color-mix(in srgb, var(--warning-text) 14%, transparent);
+  color: var(--warning-text);
+}
+
+.provider-credit-status.status-error {
+  background: color-mix(in srgb, var(--danger-text) 12%, transparent);
+  color: var(--danger-text);
+}
+
+.provider-credit-summary {
+  min-height: 3.8em;
+  margin: 0;
+  color: var(--text-subtle);
+  font-size: 0.87rem;
+  line-height: 1.45;
+}
+
+.provider-credit-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.provider-credit-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.provider-credit-metric-heading {
+  align-items: baseline;
+  font-size: 0.8rem;
+}
+
+.provider-credit-metric-heading span {
+  color: var(--text-muted);
+}
+
+.provider-credit-metric-heading strong {
+  color: var(--text-primary);
+  text-align: right;
+}
+
+.provider-credit-progress {
+  height: 0.42rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border-soft) 75%, transparent);
+}
+
+.provider-credit-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary-to);
+  transition: width 180ms ease;
+}
+
+.provider-credit-progress.tone-warning span {
+  background: var(--warning-text);
+}
+
+.provider-credit-progress.tone-danger span {
+  background: var(--danger-text);
+}
+
+.provider-credit-metric-detail {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.provider-credit-link {
+  align-self: flex-start;
+  margin-top: auto;
+  color: var(--primary-to);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.provider-credit-link:hover {
+  text-decoration: underline;
+}
+
 .orchestrator-session-strip {
   display: flex;
   flex-direction: column;
@@ -3771,11 +3930,11 @@ p {
     right: 0;
     bottom: 0;
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 0.5rem;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.25rem;
     z-index: 30;
     margin-top: 0;
-    padding: 0.85rem 0.75rem calc(0.35rem + env(safe-area-inset-bottom));
+    padding: 0.85rem 0.45rem calc(0.35rem + env(safe-area-inset-bottom));
     border-top: 1px solid
       color-mix(in srgb, var(--border-soft) 85%, transparent);
     background: linear-gradient(
@@ -3787,8 +3946,8 @@ p {
 
   .mobile-workspace-tab {
     min-height: 48px;
-    padding: 0.65rem 0.4rem;
-    font-size: 0.78rem;
+    padding: 0.65rem 0.2rem;
+    font-size: 0.7rem;
     display: flex;
     flex-direction: column;
     align-items: center;

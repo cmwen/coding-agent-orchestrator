@@ -43,6 +43,7 @@ import {
   type OrchestratorScheduleDraft,
   OrchestratorScheduleForm,
 } from "./OrchestratorScheduleModal";
+import { ProviderCreditsDashboard } from "./ProviderCreditsDashboard";
 import { SingleAttachmentPicker } from "./SingleAttachmentPicker";
 
 interface OrchestratorPaneProps {
@@ -90,6 +91,7 @@ type WorkspaceView =
   | "changes"
   | "files"
   | "schedules"
+  | "usage"
   | "settings";
 
 const TERMINAL_HISTORY_PAGE_LINE_LIMIT = 2_000;
@@ -168,14 +170,26 @@ function executionModeCommandHint(mode?: OrchestratorExecutionMode): string {
   return "-p ...";
 }
 
-function supportsProviderSessionResume(cliProvider?: string): boolean {
-  return (
-    cliProvider === "copilot" ||
-    cliProvider === "gemini" ||
-    cliProvider === "codex" ||
-    cliProvider === "opencode" ||
-    cliProvider === "antigravity"
-  );
+function supportsProviderSessionResume(
+  capabilities: OrchestratorCapabilities | undefined,
+  cliProvider?: string
+): boolean {
+  const descriptor = (
+    capabilities?.supportedCliProviders ??
+    capabilities?.cliProviders ??
+    []
+  ).find((provider) => provider.id === cliProvider);
+  if (descriptor?.capabilities.supportsProviderSessionResume !== undefined) {
+    return descriptor.capabilities.supportsProviderSessionResume;
+  }
+  return [
+    "copilot",
+    "gemini",
+    "codex",
+    "opencode",
+    "antigravity",
+    "grok",
+  ].includes(cliProvider ?? "");
 }
 
 function providerSessionFieldNote(
@@ -225,6 +239,9 @@ function delegatePromptPlaceholder(
   if (cliProvider === "antigravity") {
     return "Queue another async prompt for the Google Antigravity CLI window.";
   }
+  if (cliProvider === "grok") {
+    return "Queue another async prompt for the Grok Build CLI window.";
+  }
   return "Queue another async prompt for the selected CLI window.";
 }
 
@@ -234,20 +251,26 @@ function buildDelegationCommandHint(
 ): string {
   const cliProvider = session.cliProvider ?? "copilot";
   const effectiveProviderSessionId =
-    providerSessionId?.trim() || session.providerSessionId;
+    providerSessionId?.trim() ||
+    (session.reuseProviderSession !== false
+      ? session.providerSessionId
+      : undefined);
   if (cliProvider === "gemini") {
-    return `gemini --model ${session.model}${effectiveProviderSessionId ? ` --resume ${effectiveProviderSessionId}` : ""} --yolo ${executionModeCommandHint()}`;
+    return `gemini --model ${session.model}${effectiveProviderSessionId ? ` --resume ${effectiveProviderSessionId}` : ""} --approval-mode yolo ${executionModeCommandHint()}`;
   }
   if (cliProvider === "codex") {
     return effectiveProviderSessionId
-      ? `codex resume --model ${session.model} ${effectiveProviderSessionId} ...`
-      : `codex --model ${session.model} --approval-mode full-auto ...`;
+      ? `codex exec resume --model ${session.model} ${effectiveProviderSessionId} ...`
+      : `codex exec --model ${session.model} ...`;
   }
   if (cliProvider === "opencode") {
-    return `opencode run --model ${session.model}${effectiveProviderSessionId ? ` --session ${effectiveProviderSessionId}` : ""} -p ...`;
+    return `opencode run --model ${session.model}${effectiveProviderSessionId ? ` --session ${effectiveProviderSessionId}` : ""} ...`;
   }
   if (cliProvider === "antigravity") {
     return `agy${effectiveProviderSessionId ? ` --conversation ${effectiveProviderSessionId}` : ""} -p ...`;
+  }
+  if (cliProvider === "grok") {
+    return `grok${session.model !== "auto" ? ` -m ${session.model}` : ""}${effectiveProviderSessionId ? ` --resume ${effectiveProviderSessionId}` : ""} -p ...`;
   }
   const sessionFlag = effectiveProviderSessionId
     ? ` --resume ${effectiveProviderSessionId}`
@@ -350,6 +373,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
   const [projectPurpose, setProjectPurpose] = useState("");
   const [initialPrompt, setInitialPrompt] = useState("");
   const [providerSessionId, setProviderSessionId] = useState("");
+  const [reuseProviderSession, setReuseProviderSession] = useState(true);
   const [delegatePrompt, setDelegatePrompt] = useState("");
   const [delegateProviderSessionId, setDelegateProviderSessionId] =
     useState("");
@@ -371,6 +395,11 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
   const [sessionCustomAgentId, setSessionCustomAgentId] = useState(
     props.session?.selectedCustomAgentId ?? ""
   );
+  const [sessionProviderSessionId, setSessionProviderSessionId] = useState(
+    props.session?.providerSessionId ?? ""
+  );
+  const [sessionReuseProviderSession, setSessionReuseProviderSession] =
+    useState(props.session?.reuseProviderSession !== false);
   const [executionMode, setExecutionMode] = useState(
     props.session?.executionMode ?? "standard"
   );
@@ -449,13 +478,18 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
   } | null>(null);
   const changesPanelId = useId();
   const projectPathDatalistId = "orchestrator-project-paths";
-  const availableCliProviders = props.capabilities?.cliProviders ?? [];
+  const availableCliProviders =
+    props.capabilities?.supportedCliProviders ??
+    props.capabilities?.cliProviders ??
+    [];
   const selectedCreateCliProvider = useMemo(
     () =>
       availableCliProviders.find((provider) => provider.id === cliProvider) ??
       availableCliProviders[0],
     [availableCliProviders, cliProvider]
   );
+  const selectedCreateProviderInstalled =
+    selectedCreateCliProvider?.installed !== false;
   const selectedSavedSessionCliProvider = useMemo(
     () =>
       availableCliProviders.find(
@@ -578,6 +612,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
     { id: "changes", label: "Changes" },
     { id: "files", label: "Files" },
     { id: "schedules", label: "Schedules" },
+    { id: "usage", label: "Credits" },
     { id: "settings", label: "Settings" },
   ];
   const queuePanelId = props.session
@@ -736,6 +771,8 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
       setSessionCliProvider(defaultCliProvider);
       setSessionModelId(props.defaultModelId);
       setSessionCustomAgentId("");
+      setSessionProviderSessionId("");
+      setSessionReuseProviderSession(true);
       setExecutionMode("standard");
       return;
     }
@@ -743,6 +780,10 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
     setSessionCliProvider(props.session.cliProvider ?? defaultCliProvider);
     setSessionModelId(props.session.model);
     setSessionCustomAgentId(props.session.selectedCustomAgentId ?? "");
+    setSessionProviderSessionId(props.session.providerSessionId ?? "");
+    setSessionReuseProviderSession(
+      props.session.reuseProviderSession !== false
+    );
     setExecutionMode(props.session.executionMode ?? "standard");
   }, [
     defaultCliProvider,
@@ -750,6 +791,8 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
     props.session?.cliProvider,
     props.session?.executionMode,
     props.session?.selectedCustomAgentId,
+    props.session?.providerSessionId,
+    props.session?.reuseProviderSession,
     props.session?.model,
     props.session?.sessionId,
     props.session?.title,
@@ -804,7 +847,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
   }, [props.onSessionUpdate]);
 
   useEffect(() => {
-    if (!props.session) {
+    if (!props.session || activeWorkspaceView !== "changes") {
       return;
     }
 
@@ -854,6 +897,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
         }
       });
   }, [
+    activeWorkspaceView,
     props.onSessionMissing,
     props.session?.sessionId,
     props.session?.updatedAt,
@@ -1219,8 +1263,15 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
     if (!props.capabilities) {
       return "Loading orchestrator capabilities…";
     }
+    const providers =
+      props.capabilities.supportedCliProviders ??
+      props.capabilities.cliProviders ??
+      [];
+    const installedProviders = providers.filter(
+      (provider) => provider.installed !== false
+    );
     if (props.capabilities.available) {
-      const providerNames = (props.capabilities.cliProviders ?? [])
+      const providerNames = installedProviders
         .map((provider) => provider.displayName)
         .join(" or ");
       return props.capabilities.emailDeliveryAvailable
@@ -1230,30 +1281,10 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
     if (!props.capabilities.tmuxInstalled) {
       return "tmux is not available on this machine.";
     }
-    const installedCLIs = [
-      props.capabilities.copilotInstalled && "copilot",
-      props.capabilities.geminiInstalled && "gemini",
-      props.capabilities.codexInstalled && "codex",
-      props.capabilities.opencodeInstalled && "opencode",
-      props.capabilities.antigravityInstalled && "antigravity",
-    ].filter(Boolean);
-    if (installedCLIs.length === 0) {
-      return "No supported CLI tools (copilot, gemini, codex, opencode, or antigravity) are available on this machine.";
-    }
-    const missingCLIs = [
-      !props.capabilities.copilotInstalled && "copilot",
-      !props.capabilities.geminiInstalled && "gemini",
-      !props.capabilities.codexInstalled && "codex",
-      !props.capabilities.opencodeInstalled && "opencode",
-      !props.capabilities.antigravityInstalled && "antigravity",
-    ].filter(Boolean);
-    if (missingCLIs.length === 1) {
-      return `The \`${missingCLIs[0]}\` CLI is not available on this machine.`;
-    }
-    if (missingCLIs.length > 1) {
-      return `The following CLIs are not available on this machine: ${missingCLIs.map((cli) => `\`${cli}\``).join(", ")}.`;
-    }
-    return "The orchestrator feature is unavailable.";
+    const commandNames = providers
+      .map((provider) => provider.command ?? provider.id)
+      .join(", ");
+    return `No supported coding-agent CLI is installed. Install one of: ${commandNames || "copilot, gemini, codex, opencode, agy, grok"}.`;
   }, [props.capabilities]);
   const sessionDetailsDirty =
     !!props.session &&
@@ -1261,6 +1292,10 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
       sessionCliProvider !== props.session.cliProvider ||
       sessionModelId !== props.session.model ||
       sessionCustomAgentId !== (props.session.selectedCustomAgentId ?? "") ||
+      sessionProviderSessionId.trim() !==
+        (props.session.providerSessionId ?? "") ||
+      sessionReuseProviderSession !==
+        (props.session.reuseProviderSession !== false) ||
       executionMode !== props.session.executionMode);
   const canSaveSessionDetails =
     !!props.session &&
@@ -1354,8 +1389,27 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
           className="orchestrator-workspace-nav create-mode"
           aria-label="Workspace views"
         >
-          <button type="button" className="workspace-tab is-active">
+          <button
+            type="button"
+            className={
+              activeWorkspaceView === "usage"
+                ? "workspace-tab"
+                : "workspace-tab is-active"
+            }
+            onClick={() => setActiveWorkspaceView("delegate")}
+          >
             Session setup
+          </button>
+          <button
+            type="button"
+            className={
+              activeWorkspaceView === "usage"
+                ? "workspace-tab is-active"
+                : "workspace-tab"
+            }
+            onClick={() => setActiveWorkspaceView("usage")}
+          >
+            Credits
           </button>
           <button type="button" className="workspace-tab" disabled>
             Queue board
@@ -1370,7 +1424,14 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
             Settings
           </button>
         </nav>
-        <div className="orchestrator-intro settings-card">
+        <ProviderCreditsDashboard
+          active={activeWorkspaceView === "usage"}
+          providers={availableCliProviders}
+        />
+        <div
+          className="orchestrator-intro settings-card"
+          hidden={activeWorkspaceView === "usage"}
+        >
           <div>
             <div className="eyebrow">Async delegation</div>
             <h3>Create an orchestrator session</h3>
@@ -1382,25 +1443,37 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
           <div className="field-note">{capabilityMessage}</div>
         </div>
 
-        <div className="settings-card orchestrator-form">
+        <div
+          className="settings-card orchestrator-form"
+          hidden={activeWorkspaceView === "usage"}
+        >
           <label className="field-group">
             <span>CLI provider</span>
             <select
               value={cliProvider}
               onChange={(event) => {
                 setCliProvider(event.target.value);
+                setProviderSessionId("");
                 setExecutionMode("standard");
               }}
             >
               {availableCliProviders.map((provider) => (
-                <option key={provider.id} value={provider.id}>
+                <option
+                  key={provider.id}
+                  value={provider.id}
+                  disabled={provider.installed === false}
+                >
                   {provider.displayName}
+                  {provider.installed === false ? " (not installed)" : ""}
                 </option>
               ))}
             </select>
             {selectedCreateCliProvider?.description ? (
               <small className="field-note">
                 {selectedCreateCliProvider.description}
+                {selectedCreateCliProvider.installed === false
+                  ? ` Install the \`${selectedCreateCliProvider.command ?? selectedCreateCliProvider.id}\` command to use it.`
+                  : ""}
               </small>
             ) : null}
           </label>
@@ -1555,7 +1628,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
               placeholder="Optional first task to queue as soon as the session is created."
             />
           </label>
-          {supportsProviderSessionResume(cliProvider) ? (
+          {supportsProviderSessionResume(props.capabilities, cliProvider) ? (
             <label className="field-group">
               <span>Coding agent session ID</span>
               <input
@@ -1569,6 +1642,23 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
               </small>
             </label>
           ) : null}
+          <label className="checkbox-row settings-checkbox">
+            <input
+              type="checkbox"
+              checked={reuseProviderSession}
+              onChange={(event) =>
+                setReuseProviderSession(event.target.checked)
+              }
+            />
+            <div>
+              <strong>Continue the coding agent session by default</strong>
+              <span className="field-note">
+                Reuse the same provider session ID for later jobs so the agent
+                keeps its conversation context. Turn this off for isolated
+                one-shot tasks.
+              </span>
+            </div>
+          </label>
           {props.error ? (
             <div className="error-row" role="alert">
               {props.error}
@@ -1583,7 +1673,10 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
               <span>
                 Model: {selectedNewSessionModel?.displayName ?? modelId}
               </span>
-              {supportsProviderSessionResume(cliProvider) ? (
+              {supportsProviderSessionResume(
+                props.capabilities,
+                cliProvider
+              ) ? (
                 <span>
                   Coding agent session ID:{" "}
                   {providerSessionId.trim() || "not set"}
@@ -1601,6 +1694,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                 !projectPath.trim() ||
                 !projectPurpose.trim() ||
                 !modelId.trim() ||
+                !selectedCreateProviderInstalled ||
                 !props.capabilities?.available
               }
               onClick={() =>
@@ -1611,6 +1705,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                   cliProvider,
                   model: modelId,
                   providerSessionId: providerSessionId.trim() || undefined,
+                  reuseProviderSession,
                   executionMode,
                   prompt: initialPrompt.trim() || undefined,
                 })
@@ -1705,6 +1800,10 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                   {`Saved default coding agent session ID: ${savedProviderSessionId}`}
                 </span>
               ) : null}
+              <span>
+                Session reuse:{" "}
+                {props.session.reuseProviderSession !== false ? "on" : "off"}
+              </span>
               <span>
                 {props.session.jobs.length} delegated job
                 {props.session.jobs.length === 1 ? "" : "s"}
@@ -1847,6 +1946,10 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
           })}
         </nav>
         <div className="orchestrator-workspace-board">
+          <ProviderCreditsDashboard
+            active={activeWorkspaceView === "usage"}
+            providers={availableCliProviders}
+          />
           <div
             id={settingsPanelId}
             className={`collapsible-region orchestrator-settings-panel-shell orchestrator-workspace-panel orchestrator-board-card orchestrator-board-card-settings ${
@@ -1875,12 +1978,18 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                     onChange={(event) => {
                       setSessionCliProvider(event.target.value);
                       setSessionCustomAgentId("");
+                      setSessionProviderSessionId("");
                       setExecutionMode("standard");
                     }}
                   >
                     {availableCliProviders.map((provider) => (
-                      <option key={provider.id} value={provider.id}>
+                      <option
+                        key={provider.id}
+                        value={provider.id}
+                        disabled={provider.installed === false}
+                      >
                         {provider.displayName}
+                        {provider.installed === false ? " (not installed)" : ""}
                       </option>
                     ))}
                   </select>
@@ -1939,6 +2048,44 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                         : "No `.agent.md` files were discovered in the project path when this session was created."}
                   </small>
                 </label>
+                <label className="field-group">
+                  <span>Default coding agent session ID</span>
+                  <input
+                    value={sessionProviderSessionId}
+                    onChange={(event) =>
+                      setSessionProviderSessionId(event.target.value)
+                    }
+                    placeholder="Created automatically after the first job"
+                    autoComplete="off"
+                    disabled={
+                      !supportsProviderSessionResume(
+                        props.capabilities,
+                        sessionCliProvider
+                      )
+                    }
+                  />
+                  <small className="field-note">
+                    Paste a provider session ID to target it explicitly, or
+                    leave this blank to let the orchestrator allocate or
+                    discover one.
+                  </small>
+                </label>
+                <label className="checkbox-row settings-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={sessionReuseProviderSession}
+                    onChange={(event) =>
+                      setSessionReuseProviderSession(event.target.checked)
+                    }
+                  />
+                  <div>
+                    <strong>Continue this coding agent session</strong>
+                    <span className="field-note">
+                      Enabled by default. Future jobs reuse the saved or latest
+                      discovered provider session ID.
+                    </span>
+                  </div>
+                </label>
               </div>
               <div className="panel-caption">
                 Saved runtime: {props.session.tmuxSessionName}:
@@ -1982,7 +2129,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                       onClick={handleOpenCreateSchedule}
                       disabled={props.pending}
                     >
-                      New schedule
+                      Create schedule
                     </button>
                   </div>
                 </article>
@@ -2017,6 +2164,9 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                       cliProvider: sessionCliProvider,
                       model: sessionModelId,
                       selectedCustomAgentId: sessionCustomAgentId || null,
+                      providerSessionId:
+                        sessionProviderSessionId.trim() || null,
+                      reuseProviderSession: sessionReuseProviderSession,
                       executionMode,
                     });
                   }}
@@ -2361,6 +2511,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                           {job.status !== "queued" &&
                           job.providerSessionId &&
                           supportsProviderSessionResume(
+                            props.capabilities,
                             props.session?.cliProvider
                           ) ? (
                             <button
@@ -2764,21 +2915,30 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                   )}
                 />
               </label>
-              {supportsProviderSessionResume(props.session.cliProvider) ? (
+              {supportsProviderSessionResume(
+                props.capabilities,
+                props.session.cliProvider
+              ) ? (
                 <label className="field-group">
-                  <span>Continue from previous session ID</span>
+                  <span>Coding agent session ID override</span>
                   <input
                     value={delegateProviderSessionId}
                     onChange={(event) =>
                       setDelegateProviderSessionId(event.target.value)
                     }
-                    placeholder="Leave blank to start a fresh task session"
+                    placeholder={
+                      props.session.reuseProviderSession !== false
+                        ? "Leave blank to continue the session default"
+                        : "Optional session ID for this task"
+                    }
                     autoComplete="off"
                   />
                   <small className="field-note">
                     {delegateProviderSessionId.trim()
                       ? "Used only for this delegated task."
-                      : "Leave blank to always start a fresh coding agent session."}
+                      : props.session.reuseProviderSession !== false
+                        ? "The saved or latest discovered session ID is reused automatically."
+                        : "Session reuse is disabled, so a blank value starts a fresh coding agent session."}
                   </small>
                 </label>
               ) : null}
@@ -2802,14 +2962,15 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                       {delegateProviderSessionId.trim()}
                     </span>
                   ) : supportsProviderSessionResume(
+                      props.capabilities,
                       props.session.cliProvider
                     ) ? (
                     <span>
-                      {props.session.cliProvider === "copilot"
-                        ? "Blank starts a fresh Copilot task session."
-                        : props.session.cliProvider === "antigravity"
-                          ? "Blank starts a fresh Google Antigravity conversation."
-                          : "Set a coding agent session ID to continue an existing conversation."}
+                      {props.session.reuseProviderSession !== false
+                        ? props.session.providerSessionId
+                          ? `Continues coding agent session ${props.session.providerSessionId}.`
+                          : "The first task creates a provider session; later tasks continue it automatically."
+                        : "Session reuse is off; this task starts a fresh provider session."}
                     </span>
                   ) : null}
                   <span>
@@ -2861,6 +3022,21 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
         <button
           type="button"
           className={
+            activeWorkspaceView === "usage"
+              ? "mobile-workspace-tab is-active"
+              : "mobile-workspace-tab"
+          }
+          data-workspace-target="usage"
+          onClick={() => handleSelectWorkspaceView("usage")}
+        >
+          <span className="mobile-nav-icon" aria-hidden="true">
+            <UsageIcon />
+          </span>
+          Credits
+        </button>
+        <button
+          type="button"
+          className={
             activeWorkspaceView === "queue"
               ? "mobile-workspace-tab is-active"
               : "mobile-workspace-tab"
@@ -2871,7 +3047,7 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
           <span className="mobile-nav-icon" aria-hidden="true">
             <QueueIcon />
           </span>
-          Queue
+          Home
         </button>
         <button
           type="button"
@@ -3175,6 +3351,17 @@ function SettingsIcon() {
       <path
         fill="currentColor"
         d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.32 7.32 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.58.23-1.13.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.48a.5.5 0 0 0 .12.64L4.86 10.7c-.05.31-.08.64-.08.97s.03.65.08.97l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.5.39 1.05.71 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.23 1.13-.55 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.02-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"
+      />
+    </svg>
+  );
+}
+
+function UsageIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm1 17.93V18h-2v1.93A8 8 0 0 1 4.07 13H6v-2H4.07A8 8 0 0 1 11 4.07V6h2V4.07A8 8 0 0 1 19.93 11H18v2h1.93A8 8 0 0 1 13 19.93ZM12 8a4 4 0 0 0-4 4h2a2 2 0 0 1 3.73-1l-2.44 2.44 1.42 1.42 2.44-2.44A4 4 0 0 0 12 8Z"
       />
     </svg>
   );

@@ -16,6 +16,7 @@ import type {
   OrchestratorTerminalInputRequest,
   OrchestratorWorkingTree,
   OrchestratorWorkingTreeDiff,
+  ProviderCreditsDashboard,
   WorkspaceSummary,
 } from "@coding-agent-orchestrator/shared";
 import {
@@ -32,6 +33,7 @@ import {
   orchestratorTerminalInputSchema,
   orchestratorWorkingTreeDiffSchema,
   orchestratorWorkingTreeSchema,
+  providerCreditsDashboardSchema,
 } from "@coding-agent-orchestrator/shared";
 import {
   resolveWorkspace,
@@ -43,6 +45,7 @@ import { type Context, Hono } from "hono";
 import { readRuntimePort } from "./env.js";
 import { getHttpErrorMessage, getHttpErrorStatus } from "./http-errors.js";
 import { TmuxOrchestratorService } from "./orchestrator.js";
+import { ProviderCreditsService } from "./provider-credits.js";
 import { computeNextRunAt, OrchestratorScheduleService } from "./scheduler.js";
 
 const workspace = await resolveWorkspace();
@@ -51,6 +54,7 @@ const ORCHESTRATOR_TERMINAL_PAGE_LINE_LIMIT = 2_000;
 const ORCHESTRATOR_STATE_FILENAME = "ORCHESTRATOR.json";
 const ORCHESTRATOR_TERMINAL_LOG_FILENAME = "pane.log";
 const orchestrator = new TmuxOrchestratorService(workspace, defaultProjectPath);
+const providerCredits = new ProviderCreditsService();
 const scheduleService = new OrchestratorScheduleService(
   workspace,
   orchestrator
@@ -83,6 +87,16 @@ app.get("/api/orchestrator/agent", async (context) => {
 
 app.get("/api/orchestrator/capabilities", async (context) => {
   return context.json(await orchestrator.getCapabilities());
+});
+
+app.get("/api/orchestrator/provider-credits", async (context) => {
+  const forceRefresh = context.req.query("refresh") === "true";
+  const dashboard = providerCreditsDashboardSchema.parse(
+    (await providerCredits.getDashboard(
+      forceRefresh
+    )) satisfies ProviderCreditsDashboard
+  );
+  return context.json(dashboard);
 });
 
 app.get("/api/orchestrator/master", async (context) => {

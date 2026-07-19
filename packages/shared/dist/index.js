@@ -16,13 +16,57 @@ var chatProviderDescriptorSchema = z.object({
 });
 var orchestratorCliProviderCapabilitiesSchema = z.object({
   supportsCustomAgents: z.boolean().default(false),
-  supportsExecutionMode: z.boolean().default(false)
+  supportsExecutionMode: z.boolean().default(false),
+  supportsProviderSessionResume: z.boolean().optional()
 });
 var orchestratorCliProviderDescriptorSchema = z.object({
   id: z.string().min(1),
   displayName: z.string().min(1),
   description: z.string().optional(),
+  command: z.string().min(1).optional(),
+  installed: z.boolean().optional(),
   capabilities: orchestratorCliProviderCapabilitiesSchema
+});
+var providerCreditStatusKindSchema = z.enum([
+  "live",
+  "local",
+  "interactive",
+  "unavailable",
+  "error",
+  "not-installed"
+]);
+var providerCreditSourceSchema = z.enum([
+  "live-cli",
+  "local-cli",
+  "provider-dashboard",
+  "none"
+]);
+var providerCreditMetricSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  value: z.string().min(1),
+  usedPercent: z.number().min(0).max(100).optional(),
+  remainingPercent: z.number().min(0).max(100).optional(),
+  resetAt: z.string().datetime().optional(),
+  detail: z.string().optional()
+});
+var providerCreditStatusSchema = z.object({
+  providerId: z.string().min(1),
+  displayName: z.string().min(1),
+  installed: z.boolean(),
+  status: providerCreditStatusKindSchema,
+  source: providerCreditSourceSchema,
+  summary: z.string().min(1),
+  plan: z.string().min(1).optional(),
+  metrics: z.array(providerCreditMetricSchema).default([]),
+  accountUrl: z.string().url().optional(),
+  actionLabel: z.string().min(1).optional(),
+  checkedAt: z.string().datetime()
+});
+var providerCreditsDashboardSchema = z.object({
+  checkedAt: z.string().datetime(),
+  cacheTtlSeconds: z.number().int().positive(),
+  providers: z.array(providerCreditStatusSchema)
 });
 var reasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh"]);
 var localMcpServerSchema = z.object({
@@ -489,6 +533,7 @@ var orchestratorSessionSummarySchema = z.object({
   availableCustomAgents: z.array(copilotCustomAgentSchema).default([]),
   selectedCustomAgentId: z.string().min(1).optional(),
   providerSessionId: z.string().min(1).optional(),
+  reuseProviderSession: z.boolean().optional(),
   executionMode: orchestratorExecutionModeSchema.optional(),
   premiumUsage: premiumUsageTotalsSchema.optional(),
   sessionDirectory: z.string().min(1),
@@ -510,8 +555,10 @@ var orchestratorCapabilitiesSchema = z.object({
   codexInstalled: z.boolean().optional(),
   opencodeInstalled: z.boolean().optional(),
   antigravityInstalled: z.boolean().optional(),
+  grokInstalled: z.boolean().optional(),
   defaultCliProvider: z.string().min(1).optional(),
   cliProviders: z.array(orchestratorCliProviderDescriptorSchema).optional(),
+  supportedCliProviders: z.array(orchestratorCliProviderDescriptorSchema).optional(),
   tmuxSessionName: z.string().min(1),
   emailDeliveryAvailable: z.boolean().optional(),
   emailFromAddress: z.string().email().optional()
@@ -727,6 +774,7 @@ var orchestratorSessionCreateSchema = z.object({
   model: z.string().min(1).default(DEFAULT_CHAT_MODEL),
   selectedCustomAgentId: z.string().trim().min(1).nullable().optional(),
   providerSessionId: z.string().trim().min(1).regex(/^[a-zA-Z0-9_\-.:]+$/, "Invalid session ID format").optional(),
+  reuseProviderSession: z.boolean().optional(),
   executionMode: orchestratorExecutionModeSchema.optional(),
   prompt: z.string().min(1).optional()
 });
@@ -735,6 +783,8 @@ var orchestratorSessionUpdateSchema = z.object({
   cliProvider: z.string().trim().min(1).optional(),
   model: z.string().trim().min(1),
   selectedCustomAgentId: z.string().trim().min(1).nullable().optional(),
+  providerSessionId: z.string().trim().min(1).regex(/^[a-zA-Z0-9_\-.:]+$/, "Invalid session ID format").nullable().optional(),
+  reuseProviderSession: z.boolean().optional(),
   executionMode: orchestratorExecutionModeSchema.optional()
 });
 var orchestratorDelegateRequestSchema = z.object({
@@ -955,6 +1005,11 @@ export {
   partialChatRuntimeConfigSchema,
   premiumUsageSchema,
   premiumUsageTotalsSchema,
+  providerCreditMetricSchema,
+  providerCreditSourceSchema,
+  providerCreditStatusKindSchema,
+  providerCreditStatusSchema,
+  providerCreditsDashboardSchema,
   readResponseErrorMessage,
   reasoningEffortSchema,
   scheduleTaskCreateSchema,

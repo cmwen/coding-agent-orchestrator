@@ -98,6 +98,7 @@ export interface CreateOrchestratorSessionInput {
   availableCustomAgents?: CopilotCustomAgent[];
   selectedCustomAgentId?: string;
   providerSessionId?: string;
+  reuseProviderSession?: boolean;
   executionMode?: OrchestratorExecutionMode;
   tmuxSessionName: string;
   tmuxWindowName: string;
@@ -247,6 +248,7 @@ export async function createOrchestratorSession(
       .parse(input.availableCustomAgents ?? []),
     selectedCustomAgentId: input.selectedCustomAgentId,
     providerSessionId: input.providerSessionId?.trim() || undefined,
+    reuseProviderSession: input.reuseProviderSession ?? true,
     executionMode: input.executionMode ?? "standard",
     tmuxSessionName: input.tmuxSessionName,
     tmuxWindowName: input.tmuxWindowName,
@@ -972,6 +974,7 @@ async function writeOrchestratorSessionManifest(
     `Model: ${state.model}`,
     `Selected Custom Agent: ${state.selectedCustomAgentId ?? "none"}`,
     `Provider Session ID: ${state.providerSessionId ?? "none"}`,
+    `Reuse Provider Session: ${state.reuseProviderSession !== false ? "enabled" : "disabled"}`,
     `Execution Mode: ${state.executionMode}`,
     `Available Custom Agents: ${state.availableCustomAgents.length}`,
     `Tmux Session: ${state.tmuxSessionName}`,

@@ -244,6 +244,18 @@ const CLI_MODELS: ModelDescriptor[] = [
     runtimeProvider: "opencode",
     supportedReasoningEfforts: [],
   },
+  {
+    id: "auto",
+    displayName: "Auto (Grok Build chooses)",
+    runtimeProvider: "grok",
+    supportedReasoningEfforts: [],
+  },
+  {
+    id: "grok-4.5",
+    displayName: "Grok 4.5",
+    runtimeProvider: "grok",
+    supportedReasoningEfforts: [],
+  },
 ];
 
 export default function App() {

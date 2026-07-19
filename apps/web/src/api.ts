@@ -22,6 +22,7 @@ import type {
   OrchestratorTerminalInputRequest,
   OrchestratorWorkingTree,
   OrchestratorWorkingTreeDiff,
+  ProviderCreditsDashboard,
   ScheduleTask,
   ScheduleTaskCreateRequest,
   ScheduleTaskUpdateRequest,
@@ -103,6 +104,10 @@ export const api = {
     ),
   getOrchestratorCapabilities: () =>
     request<OrchestratorCapabilities>("/api/orchestrator/capabilities"),
+  getProviderCredits: (forceRefresh = false) =>
+    request<ProviderCreditsDashboard>(
+      `/api/orchestrator/provider-credits${forceRefresh ? "?refresh=true" : ""}`
+    ),
   getOrchestratorMasterSession: () =>
     request<OrchestratorSession>("/api/orchestrator/master"),
   createOrchestratorMasterSession: (

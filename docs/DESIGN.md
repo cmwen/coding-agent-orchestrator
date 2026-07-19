@@ -37,9 +37,27 @@ The app has three layers:
 
 `ORCHESTRATOR.json` is the mutable session state. `SESSION.md` is a readable
 manifest. `DONE.json` is the durable completion signal written by the tmux-run
-script. `ORCHESTRATOR.json` can also persist an optional `providerSessionId`
-used to resume provider-native CLI conversations across delegated jobs, and
-each `JOB.json` records the provider session ID that was used for that run.
+script. `ORCHESTRATOR.json` can also persist an optional `providerSessionId` and
+the default-enabled `reuseProviderSession` policy used to resume provider-native
+CLI conversations across delegated jobs. Each `JOB.json` records the provider
+session ID used for that run. Providers that accept a new-session UUID are
+allocated one before launch; providers that only reveal their ID in output are
+discovered after the first run. A queued follow-up without an ID is late-bound
+to that discovered session immediately before it starts.
+
+Coding-agent backends are registered in `apps/runtime/src/cli-providers.ts`.
+The registry is the source of truth for display metadata, executable discovery,
+and provider capabilities. Executable discovery is cached briefly because CLI
+installation state changes rarely while session and terminal state can refresh
+frequently.
+
+Provider allowance collection lives in
+`apps/runtime/src/provider-credits.ts`. Collectors are isolated per provider
+and run concurrently behind a 60-second single-flight cache. Copilot and Codex
+use their machine-readable local server protocols, OpenCode uses local stats,
+and providers without a documented headless usage API return an interactive or
+account-dashboard action. A collector failure is converted into a provider card
+error instead of failing the whole dashboard.
 
 ## tmux Model
 
@@ -81,14 +99,15 @@ power-user navigation and a mobile queue-first board:
 - **Desktop**
   - persistent session rail
   - command palette (`Cmd/Ctrl+K`)
-  - workspace navigation for Delegate, Terminal, Queue, Changes, Files, Schedules,
-    and Settings
+  - workspace navigation for Delegate, Terminal, Queue, Changes, Files,
+    Schedules, Credits, and Settings
 - **Mobile**
   - compact session picker rail
   - active-session Home hub with quick session switching
   - Home queue board for running, queued, failed, and scheduled work
   - Settings keeps session defaults and automation shortcuts together
-  - bottom navigation for Delegate, Terminal, Changes, Files, and Settings
+  - bottom navigation for Delegate, Terminal, Changes, Files, Credits, and
+    Settings
 
 ### State ownership
 
@@ -97,6 +116,8 @@ power-user navigation and a mobile queue-first board:
 - `OrchestratorPane.tsx` owns session-local UI state for create/edit flows,
   queue visibility, working tree inspection, repository file browsing, terminal
   streaming, and responsive workspace navigation.
+- `ProviderCreditsDashboard.tsx` owns lazy credit loading, manual refresh, and
+  consistent presentation of live, local-only, and interactive provider states.
 
 ### Behavior parity guarantees
 
@@ -112,6 +133,10 @@ The shipped UI keeps these behaviors intact:
 - schedule create/edit/pause/resume/delete and delivery status
 - working tree status plus structured diff inspection
 - repository folder navigation and in-app file previews
+
+Working-tree and repository reads are view-scoped: the web app only performs
+them while their corresponding workspace is open, avoiding repeated Git and
+filesystem work during terminal stream updates.
 
 ## Master Session
 

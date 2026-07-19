@@ -25,6 +25,7 @@ async function openDesktopWorkspaceView(
     | "changes"
     | "files"
     | "schedules"
+    | "usage"
     | "settings"
 ) {
   const button = document.querySelector<HTMLButtonElement>(
@@ -36,7 +37,14 @@ async function openDesktopWorkspaceView(
 
 async function openMobileWorkspaceView(
   user: ReturnType<typeof userEvent.setup>,
-  view: "delegate" | "terminal" | "queue" | "changes" | "files" | "schedules"
+  view:
+    | "delegate"
+    | "terminal"
+    | "queue"
+    | "changes"
+    | "files"
+    | "schedules"
+    | "usage"
 ) {
   const button = document.querySelector<HTMLButtonElement>(
     `.orchestrator-mobile-nav [data-workspace-target="${view}"]`
@@ -127,6 +135,7 @@ describe("OrchestratorPane", () => {
       cliProvider: "copilot",
       model: "claude-sonnet-4.6",
       providerSessionId: undefined,
+      reuseProviderSession: true,
       executionMode: "standard",
       prompt: "Investigate the broken redirect flow.",
     });
@@ -565,6 +574,8 @@ describe("OrchestratorPane", () => {
       cliProvider: "copilot",
       model: "claude-sonnet-4.6",
       selectedCustomAgentId: null,
+      providerSessionId: null,
+      reuseProviderSession: true,
       executionMode: "standard",
     });
     expect(settingsPanel?.getAttribute("aria-hidden")).toBe("true");
@@ -667,6 +678,7 @@ describe("OrchestratorPane", () => {
   });
 
   it("notifies the app when the selected session is missing", async () => {
+    const user = userEvent.setup();
     const onSessionMissing = vi.fn();
     class MockEventSource {
       addEventListener = vi.fn();
@@ -767,6 +779,7 @@ describe("OrchestratorPane", () => {
       />
     );
 
+    await openDesktopWorkspaceView(user, "changes");
     await waitFor(() =>
       expect(onSessionMissing).toHaveBeenCalledWith("session-1")
     );
@@ -983,6 +996,8 @@ describe("OrchestratorPane", () => {
       cliProvider: "copilot",
       model: "gpt-5",
       selectedCustomAgentId: "reviewer",
+      providerSessionId: null,
+      reuseProviderSession: true,
       executionMode: "standard",
     });
   });
@@ -1407,7 +1422,7 @@ describe("OrchestratorPane", () => {
     expect(
       (
         screen.getByPlaceholderText(
-          "Leave blank to start a fresh task session"
+          "Leave blank to continue the session default"
         ) as HTMLInputElement
       ).value
     ).toBe("");
@@ -1579,10 +1594,10 @@ describe("OrchestratorPane", () => {
       name: "Mobile workspace views",
     });
     expect(
-      within(mobileNav).getByRole("button", { name: "Queue" })
+      within(mobileNav).getByRole("button", { name: "Home" })
     ).toBeTruthy();
     expect(
-      within(mobileNav).queryByRole("button", { name: "Home" })
+      within(mobileNav).queryByRole("button", { name: "Queue" })
     ).toBeNull();
     expect(screen.getByText("Switch session")).toBeTruthy();
     const sessionSwitcher = screen

@@ -159,6 +159,33 @@ async function mockOrchestratorRoutes(page: Page) {
   await page.route("**/api/orchestrator/capabilities", async (route) => {
     await route.fulfill({ json: capabilities });
   });
+  await page.route("**/api/orchestrator/provider-credits*", async (route) => {
+    await route.fulfill({
+      json: {
+        checkedAt: "2026-07-19T05:00:00.000Z",
+        cacheTtlSeconds: 60,
+        providers: [
+          {
+            providerId: "copilot",
+            displayName: "GitHub Copilot CLI",
+            installed: true,
+            status: "live",
+            source: "live-cli",
+            summary: "Live allowance reported by Copilot.",
+            metrics: [
+              {
+                id: "chat",
+                label: "Chat",
+                value: "198 / 200 left",
+                remainingPercent: 99,
+              },
+            ],
+            checkedAt: "2026-07-19T05:00:00.000Z",
+          },
+        ],
+      },
+    });
+  });
   await page.route("**/api/orchestrator/schedules", async (route) => {
     await route.fulfill({ json: schedules });
   });
@@ -324,7 +351,7 @@ test.describe("mobile viewport", () => {
     await expect(
       page.getByRole("button", { name: "Cancel job" })
     ).toBeVisible();
-    expect(measurements.mobileNavPosition).toBe("sticky");
+    expect(measurements.mobileNavPosition).toBe("fixed");
     expect(measurements.mobileNavBottom).toBe("0px");
     expect(measurements.mobileNavViewportGap).toBeGreaterThanOrEqual(0);
 
@@ -355,6 +382,13 @@ test.describe("mobile viewport", () => {
     expect(terminalMeasurements.terminalPanelScrollWidth).toBeLessThanOrEqual(
       terminalMeasurements.terminalPanelClientWidth
     );
+
+    await page.getByRole("button", { name: "Credits", exact: true }).click();
+    await expect(page.getByText("198 / 200 left")).toBeVisible();
+    const creditsMeasurements = await measureViewportFit(page);
+    expect(creditsMeasurements.bodyScrollWidth).toBe(
+      creditsMeasurements.viewportWidth
+    );
   });
 });
 
@@ -383,7 +417,7 @@ test.describe("desktop viewport", () => {
     });
 
     expect(layout.bodyScrollWidth).toBe(layout.viewportWidth);
-    expect(layout.columns.split(" ").length).toBe(2);
+    expect(layout.columns.split(" ").length).toBe(3);
     expect(layout.sidebarWidth).toBeGreaterThan(250);
     expect(layout.sessionListFlow).not.toBe("column");
   });

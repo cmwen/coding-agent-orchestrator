@@ -60,6 +60,7 @@ declare const storedOrchestratorSessionStateSchema: zod.ZodObject<{
     }, zod_v4_core.$strip>>>;
     selectedCustomAgentId: zod.ZodOptional<zod.ZodString>;
     providerSessionId: zod.ZodOptional<zod.ZodString>;
+    reuseProviderSession: zod.ZodOptional<zod.ZodBoolean>;
     executionMode: zod.ZodOptional<zod.ZodEnum<{
         standard: "standard";
         fleet: "fleet";
@@ -85,6 +86,7 @@ interface CreateOrchestratorSessionInput {
     availableCustomAgents?: CopilotCustomAgent[];
     selectedCustomAgentId?: string;
     providerSessionId?: string;
+    reuseProviderSession?: boolean;
     executionMode?: OrchestratorExecutionMode;
     tmuxSessionName: string;
     tmuxWindowName: string;

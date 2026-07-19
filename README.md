@@ -12,10 +12,10 @@ filesystem store.
 The web app now ships the responsive **Design 03** shell:
 
 - **Desktop:** session rail + command palette + workspace views for Delegate,
-  Terminal, Queue, Changes, Schedules, and session settings.
+  Terminal, Queue, Changes, Schedules, provider Credits, and session settings.
 - **Mobile:** compact session picker rail + active-session **Home** hub with
   queue lanes, quick session switching, and bottom navigation for Delegate,
-  Terminal, Changes, and Settings.
+  Terminal, Changes, Credits, and Settings.
 - **Behavior parity:** the UI preserves session-scoped delegation,
   single attachments, tmux streaming and reconnect, queue retry/remove/continue
   actions, working tree inspection, and schedule CRUD.
@@ -73,7 +73,38 @@ the Vite server proxies `/api` to the runtime.
 - at least one supported CLI backend:
   - `copilot`
   - `gemini`
+  - `codex`
+  - `opencode`
   - `agy` (Google Antigravity CLI)
+  - `grok` (Grok Build; the legacy `grok-build` binary name is also detected)
+
+CLI availability is discovered at runtime and shown in the new-session provider
+picker. Missing providers remain visible with their required command, so adding a
+backend does not require guessing why it is unavailable. Provider descriptors,
+binary detection, and conversation-resume capabilities live in
+`apps/runtime/src/cli-providers.ts`.
+
+## Provider credits dashboard
+
+The **Credits** workspace gives every configured CLI provider a consistent card
+without treating unlike billing systems as interchangeable:
+
+- **Copilot:** live quota snapshots from the local Copilot JSON-RPC server.
+- **Codex:** live plan rate limits, reset time, and purchased-credit balance
+  from `codex app-server`.
+- **OpenCode:** 30-day local token, cost, and session statistics. OpenCode can
+  route to many upstream providers, so this is intentionally not labeled as a
+  subscription balance.
+- **Antigravity:** a direct path to its interactive `/usage` (or `/quota`)
+  workflow, which refreshes per-model quotas.
+- **Grok Build:** a link to Grok Settings → Usage for the shared weekly
+  SuperGrok pool and extra-credit balance.
+- **Gemini:** quota guidance for remaining Standard/Enterprise users and the
+  consumer migration path to Antigravity.
+
+Provider checks run concurrently only when Credits is opened. Results are
+single-flight cached in the runtime for 60 seconds; **Refresh usage** bypasses
+the cache. A failed provider check never blocks the other cards or coding jobs.
 
 ## Local Store
 
@@ -105,21 +136,23 @@ agents/copilot-orchestrator/history/YYYY-MM/<session-id>/
 
 ## Session continuation
 
-Orchestrator sessions can now persist an optional **provider session ID** so
-future delegated jobs can continue the same CLI conversation instead of starting
-from scratch.
+Orchestrator sessions persist an optional **provider session ID** so future
+delegated jobs continue the same CLI conversation instead of rebuilding context
+from scratch. Reuse is enabled by default for new and existing orchestrator
+sessions and can be disabled in session settings for isolated one-shot tasks.
 
-- **Copilot**: new orchestrator sessions bootstrap the first delegated job with
-  a stable session name, then capture the real Copilot session ID from CLI
-  output so later delegated jobs can resume the exact prior Copilot session.
-- **Gemini, Codex, OpenCode, Antigravity**: paste an existing provider session ID into the
-  orchestrator create UI to continue that external CLI session on future
-  delegated jobs.
-- **Codex** continuation uses the `codex resume` flow under the hood; the other
-  supported providers use their resume/session flags directly.
-- Clear the provider session ID in session settings to stop targeting a pasted
-  external session. For Copilot, clearing the field falls back to the
-  orchestrator session ID again.
+- **Copilot, Gemini, and Grok Build**: the first job is assigned a UUID up front;
+  later jobs resume that exact provider session.
+- **Codex, OpenCode, and Antigravity**: the runtime discovers the provider ID
+  from the first job's output, saves it, and late-binds already queued follow-up
+  jobs before they start.
+- Paste an existing provider session ID while creating or editing an
+  orchestrator session to continue it immediately. The delegate form also
+  accepts a one-task session ID override.
+- **Codex** continuation uses `codex exec resume`; other providers use their
+  documented resume/session flags.
+- Turn off **Continue this coding agent session** to leave the saved ID intact
+  while making future jobs start fresh by default.
 - The orchestrator task queue shows the provider session ID used for each job so
   you can verify what context a run is attached to.
 

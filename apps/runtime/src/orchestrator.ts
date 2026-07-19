@@ -1,4 +1,5 @@
 import { execFile as execFileCallback } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -16,7 +17,6 @@ import {
   type MasterBatchUpdateRequest,
   type ModelDescriptor,
   type OrchestratorCapabilities,
-  type OrchestratorCliProviderDescriptor,
   type OrchestratorDelegateRequest,
   type OrchestratorExecutionMode,
   type OrchestratorJob,
@@ -78,6 +78,13 @@ import {
   writeOrchestratorJobCompletion,
 } from "@coding-agent-orchestrator/store";
 import {
+  normalizeCliProviderId,
+  ORCHESTRATOR_CLI_PROVIDER_DEFINITIONS,
+  providerSupportsSessionBootstrap,
+  providerSupportsSessionResume,
+  requireCliProviderDefinition,
+} from "./cli-providers.js";
+import {
   isRuntimeSmtpConfigured,
   readOrchestratorTmuxSessionName,
   readRuntimeSmtpEnv,
@@ -120,68 +127,14 @@ const COPILOT_SESSION_ID_PATTERNS = [
   /\/sessions\/([A-Za-z0-9][A-Za-z0-9._:-]*)\b/gi,
 ] as const;
 
-const COPILOT_CLI_PROVIDER = {
-  id: "copilot",
-  displayName: "GitHub Copilot CLI",
-  description:
-    "Runs delegated jobs through the GitHub Copilot CLI inside the tmux workspace.",
-  capabilities: {
-    supportsCustomAgents: true,
-    supportsExecutionMode: true,
-  },
-} satisfies OrchestratorCliProviderDescriptor;
-
-const GEMINI_CLI_PROVIDER = {
-  id: "gemini",
-  displayName: "Gemini CLI",
-  description:
-    "Runs delegated jobs through the Gemini CLI inside the tmux workspace.",
-  capabilities: {
-    supportsCustomAgents: false,
-    supportsExecutionMode: false,
-  },
-} satisfies OrchestratorCliProviderDescriptor;
-
-const CODEX_CLI_PROVIDER = {
-  id: "codex",
-  displayName: "OpenAI Codex CLI",
-  description:
-    "Runs delegated jobs through the OpenAI Codex CLI inside the tmux workspace.",
-  capabilities: {
-    supportsCustomAgents: false,
-    supportsExecutionMode: false,
-  },
-} satisfies OrchestratorCliProviderDescriptor;
-
-const OPENCODE_CLI_PROVIDER = {
-  id: "opencode",
-  displayName: "OpenCode CLI",
-  description:
-    "Runs delegated jobs through the OpenCode CLI inside the tmux workspace.",
-  capabilities: {
-    supportsCustomAgents: false,
-    supportsExecutionMode: false,
-  },
-} satisfies OrchestratorCliProviderDescriptor;
-
-const ANTIGRAVITY_CLI_PROVIDER = {
-  id: "antigravity",
-  displayName: "Google Antigravity CLI",
-  description:
-    "Runs delegated jobs through the Google Antigravity CLI inside the tmux workspace.",
-  capabilities: {
-    supportsCustomAgents: false,
-    supportsExecutionMode: false,
-  },
-} satisfies OrchestratorCliProviderDescriptor;
-
-const ORCHESTRATOR_CLI_PROVIDERS = [
-  COPILOT_CLI_PROVIDER,
-  GEMINI_CLI_PROVIDER,
-  CODEX_CLI_PROVIDER,
-  OPENCODE_CLI_PROVIDER,
-  ANTIGRAVITY_CLI_PROVIDER,
-] as const;
+const COPILOT_CLI_PROVIDER = requireCliProviderDefinition("copilot").descriptor;
+const GEMINI_CLI_PROVIDER = requireCliProviderDefinition("gemini").descriptor;
+const CODEX_CLI_PROVIDER = requireCliProviderDefinition("codex").descriptor;
+const OPENCODE_CLI_PROVIDER =
+  requireCliProviderDefinition("opencode").descriptor;
+const ANTIGRAVITY_CLI_PROVIDER =
+  requireCliProviderDefinition("antigravity").descriptor;
+const GROK_CLI_PROVIDER = requireCliProviderDefinition("grok").descriptor;
 
 interface ReconciledStatus {
   status: OrchestratorSession["status"];
@@ -214,32 +167,31 @@ function normalizeProviderSessionId(
 }
 
 function supportsProviderSessionResume(cliProvider?: string): boolean {
-  return (
-    cliProvider === COPILOT_CLI_PROVIDER.id ||
-    cliProvider === GEMINI_CLI_PROVIDER.id ||
-    cliProvider === CODEX_CLI_PROVIDER.id ||
-    cliProvider === OPENCODE_CLI_PROVIDER.id ||
-    cliProvider === ANTIGRAVITY_CLI_PROVIDER.id
-  );
+  return providerSupportsSessionResume(cliProvider);
 }
 
 function supportsProviderSessionBootstrap(cliProvider?: string): boolean {
-  return cliProvider === COPILOT_CLI_PROVIDER.id;
+  return providerSupportsSessionBootstrap(cliProvider);
 }
 
 function defaultJobProviderSessionId(
-  cliProvider: string | undefined,
-  jobId: string
+  cliProvider: string | undefined
 ): string | undefined {
   return supportsProviderSessionBootstrap(cliProvider)
-    ? `job-${jobId}`
+    ? randomUUID()
     : undefined;
 }
 
-function resolveQueuedJobProviderSession(input: {
+function shouldReuseProviderSession(
+  session: Pick<OrchestratorSession, "reuseProviderSession">
+): boolean {
+  return session.reuseProviderSession !== false;
+}
+
+export function resolveQueuedJobProviderSession(input: {
   cliProvider: string;
-  jobId: string;
   requestedProviderSessionId?: string | null;
+  bootstrapProviderSession?: boolean;
 }): { providerSessionId?: string; resumeProviderSession: boolean } {
   const requestedProviderSessionId = normalizeProviderSessionId(
     input.requestedProviderSessionId
@@ -251,16 +203,25 @@ function resolveQueuedJobProviderSession(input: {
     };
   }
 
+  if (input.bootstrapProviderSession === false) {
+    return {
+      providerSessionId: undefined,
+      resumeProviderSession: false,
+    };
+  }
+
   return {
-    providerSessionId: defaultJobProviderSessionId(
-      input.cliProvider,
-      input.jobId
-    ),
+    providerSessionId: defaultJobProviderSessionId(input.cliProvider),
     resumeProviderSession: false,
   };
 }
 
 export class TmuxOrchestratorService {
+  private cliInstallationCache?: {
+    expiresAt: number;
+    installedProviderIds: Set<string>;
+  };
+
   constructor(
     private readonly workspace: OrchestratorWorkspace,
     private readonly defaultProjectPath: string,
@@ -272,21 +233,9 @@ export class TmuxOrchestratorService {
 
   async getCapabilities(): Promise<OrchestratorCapabilities> {
     const smtp = readRuntimeSmtpEnv();
-    const [
-      tmuxInstalled,
-      copilotInstalled,
-      geminiInstalled,
-      codexInstalled,
-      opencodeInstalled,
-      antigravityInstalled,
-      sessions,
-    ] = await Promise.all([
+    const [tmuxInstalled, installedProviderIds, sessions] = await Promise.all([
       this.commandExists("tmux"),
-      this.commandExists("copilot"),
-      this.commandExists("gemini"),
-      this.commandExists("codex"),
-      this.commandExists("opencode"),
-      this.commandExists("agy"),
+      this.getInstalledCliProviderIds(),
       listOrchestratorSessions(this.workspace),
     ]);
     const recentProjectPaths = [
@@ -294,27 +243,31 @@ export class TmuxOrchestratorService {
     ]
       .filter((projectPath) => projectPath !== this.defaultProjectPath)
       .slice(0, 8);
-    const cliProviders = ORCHESTRATOR_CLI_PROVIDERS.filter((provider) => {
-      if (provider.id === "copilot") return copilotInstalled;
-      if (provider.id === "gemini") return geminiInstalled;
-      if (provider.id === "codex") return codexInstalled;
-      if (provider.id === "opencode") return opencodeInstalled;
-      if (provider.id === "antigravity") return antigravityInstalled;
-      return false;
-    });
+    const supportedCliProviders = ORCHESTRATOR_CLI_PROVIDER_DEFINITIONS.map(
+      (provider) => ({
+        ...provider.descriptor,
+        command: provider.command,
+        installed: installedProviderIds.has(provider.descriptor.id),
+      })
+    );
+    const cliProviders = supportedCliProviders.filter(
+      (provider) => provider.installed
+    );
     return orchestratorCapabilitiesSchema.parse({
       available: tmuxInstalled && cliProviders.length > 0,
       defaultProjectPath: this.defaultProjectPath,
       recentProjectPaths,
       tmuxInstalled,
-      copilotInstalled,
-      geminiInstalled,
-      codexInstalled,
-      opencodeInstalled,
-      antigravityInstalled,
+      copilotInstalled: installedProviderIds.has("copilot"),
+      geminiInstalled: installedProviderIds.has("gemini"),
+      codexInstalled: installedProviderIds.has("codex"),
+      opencodeInstalled: installedProviderIds.has("opencode"),
+      antigravityInstalled: installedProviderIds.has("antigravity"),
+      grokInstalled: installedProviderIds.has("grok"),
       defaultCliProvider:
         cliProviders[0]?.id ?? DEFAULT_ORCHESTRATOR_CLI_PROVIDER,
       cliProviders,
+      supportedCliProviders,
       tmuxSessionName: this.tmuxSessionName,
       emailDeliveryAvailable: this.isEmailDeliveryConfigured(),
       emailFromAddress: smtp.from,
@@ -577,6 +530,7 @@ export class TmuxOrchestratorService {
       availableCustomAgents,
       selectedCustomAgentId,
       providerSessionId,
+      reuseProviderSession: request.reuseProviderSession ?? true,
       executionMode,
       tmuxSessionName: this.tmuxSessionName,
       tmuxWindowName,
@@ -600,6 +554,16 @@ export class TmuxOrchestratorService {
     const title = request.title;
     const cliProvider = this.normalizeCliProvider(request.cliProvider);
     const model = request.model;
+    const providerChanged =
+      cliProvider !==
+      (session.cliProvider ?? DEFAULT_ORCHESTRATOR_CLI_PROVIDER);
+    const providerSessionId = providerChanged
+      ? normalizeProviderSessionId(request.providerSessionId)
+      : request.providerSessionId !== undefined
+        ? normalizeProviderSessionId(request.providerSessionId)
+        : session.providerSessionId;
+    const reuseProviderSession =
+      request.reuseProviderSession ?? shouldReuseProviderSession(session);
     await this.assertCapabilities(cliProvider);
     const availableCustomAgents =
       cliProvider === COPILOT_CLI_PROVIDER.id
@@ -623,9 +587,10 @@ export class TmuxOrchestratorService {
     );
     const hasChanges =
       title !== session.title ||
-      cliProvider !==
-        (session.cliProvider ?? DEFAULT_ORCHESTRATOR_CLI_PROVIDER) ||
+      providerChanged ||
       model !== session.model ||
+      providerSessionId !== session.providerSessionId ||
+      reuseProviderSession !== shouldReuseProviderSession(session) ||
       selectedCustomAgentId !== session.selectedCustomAgentId ||
       executionMode !== (session.executionMode ?? "standard") ||
       tmuxWindowName !== session.tmuxWindowName;
@@ -651,6 +616,8 @@ export class TmuxOrchestratorService {
       model,
       availableCustomAgents,
       selectedCustomAgentId,
+      providerSessionId,
+      reuseProviderSession,
       executionMode,
       tmuxWindowName,
     });
@@ -1073,11 +1040,31 @@ export class TmuxOrchestratorService {
     const syncedSession = await this.syncDiscoveredProviderSessionIds(session);
     const paneExists = await this.tmuxPaneExists(session.tmuxPaneId);
     if (paneExists) {
-      const queuedJob = getNextQueuedJob(syncedSession.jobs);
+      let queuedJob = getNextQueuedJob(syncedSession.jobs);
       if (
         !syncedSession.jobs.some((job) => job.status === "running") &&
         queuedJob
       ) {
+        const lateBoundProviderSessionId =
+          shouldReuseProviderSession(syncedSession) &&
+          supportsProviderSessionResume(syncedSession.cliProvider) &&
+          !queuedJob.providerSessionId
+            ? syncedSession.providerSessionId
+            : undefined;
+        if (lateBoundProviderSessionId) {
+          await updateOrchestratorJob(
+            this.workspace,
+            syncedSession.sessionId,
+            queuedJob.jobId,
+            { providerSessionId: lateBoundProviderSessionId }
+          );
+          queuedJob = await this.prepareJobArtifacts(
+            syncedSession,
+            { ...queuedJob, providerSessionId: lateBoundProviderSessionId },
+            await this.resolveRetryPrompt(queuedJob),
+            true
+          );
+        }
         await this.startPreparedJob(syncedSession, queuedJob);
         return getOrchestratorSession(this.workspace, session.sessionId);
       }
@@ -1177,6 +1164,11 @@ export class TmuxOrchestratorService {
         "The `agy` CLI is required for Google Antigravity-backed orchestrator sessions."
       );
     }
+    if (cliProvider === GROK_CLI_PROVIDER.id && !capabilities.grokInstalled) {
+      throw new Error(
+        "The `grok` CLI is required for Grok Build-backed orchestrator sessions."
+      );
+    }
   }
 
   private async commandExists(command: string): Promise<boolean> {
@@ -1186,6 +1178,36 @@ export class TmuxOrchestratorService {
     } catch {
       return false;
     }
+  }
+
+  private async getInstalledCliProviderIds(): Promise<Set<string>> {
+    const now = Date.now();
+    const cached = this.cliInstallationCache;
+    if (cached && cached.expiresAt > now) {
+      return cached.installedProviderIds;
+    }
+
+    const installationResults = await Promise.all(
+      ORCHESTRATOR_CLI_PROVIDER_DEFINITIONS.map(async (provider) => {
+        const commands = [provider.command, ...(provider.commandAliases ?? [])];
+        const installed = (
+          await Promise.all(
+            commands.map((command) => this.commandExists(command))
+          )
+        ).some(Boolean);
+        return [provider.descriptor.id, installed] as const;
+      })
+    );
+    const installedProviderIds = new Set(
+      installationResults
+        .filter(([, installed]) => installed)
+        .map(([providerId]) => providerId)
+    );
+    this.cliInstallationCache = {
+      expiresAt: now + 30_000,
+      installedProviderIds,
+    };
+    return installedProviderIds;
   }
 
   private async assertProjectPath(projectPath: string): Promise<void> {
@@ -1424,14 +1446,7 @@ export class TmuxOrchestratorService {
   }
 
   private normalizeCliProvider(cliProvider?: string): string {
-    const normalized = cliProvider?.trim() || DEFAULT_ORCHESTRATOR_CLI_PROVIDER;
-    if (normalized === GEMINI_CLI_PROVIDER.id) return GEMINI_CLI_PROVIDER.id;
-    if (normalized === CODEX_CLI_PROVIDER.id) return CODEX_CLI_PROVIDER.id;
-    if (normalized === OPENCODE_CLI_PROVIDER.id)
-      return OPENCODE_CLI_PROVIDER.id;
-    if (normalized === ANTIGRAVITY_CLI_PROVIDER.id)
-      return ANTIGRAVITY_CLI_PROVIDER.id;
-    return COPILOT_CLI_PROVIDER.id;
+    return normalizeCliProviderId(cliProvider);
   }
 
   private async finalizeCancelledJob(
@@ -1474,12 +1489,14 @@ export class TmuxOrchestratorService {
         ? "file"
         : "inline";
     const premiumUsage = await this.estimatePremiumUsage(session.model);
-    console.log(
-      "[queueDelegation] options.providerSessionId:",
-      JSON.stringify(options.providerSessionId),
-      "| cliProvider:",
-      cliProvider
+    const explicitProviderSessionId = normalizeProviderSessionId(
+      options.providerSessionId
     );
+    const requestedProviderSessionId =
+      explicitProviderSessionId ??
+      (shouldReuseProviderSession(session)
+        ? normalizeProviderSessionId(session.providerSessionId)
+        : undefined);
     const job = await createOrchestratorJob(this.workspace, session.sessionId, {
       prompt: delegatedPrompt,
       promptPreview:
@@ -1487,7 +1504,7 @@ export class TmuxOrchestratorService {
         attachment?.name ||
         "Delegated prompt",
       providerSessionId: supportsProviderSessionResume(cliProvider)
-        ? normalizeProviderSessionId(options.providerSessionId)
+        ? requestedProviderSessionId
         : undefined,
       promptMode,
       attachment,
@@ -1495,20 +1512,12 @@ export class TmuxOrchestratorService {
       scheduleId: options.scheduleId,
       premiumUsage,
     });
-    console.log(
-      "[queueDelegation] job.providerSessionId after create:",
-      JSON.stringify(job.providerSessionId)
-    );
     const { providerSessionId, resumeProviderSession } =
       resolveQueuedJobProviderSession({
         cliProvider,
-        jobId: job.jobId,
-        requestedProviderSessionId: options.providerSessionId,
+        requestedProviderSessionId,
+        bootstrapProviderSession: shouldReuseProviderSession(session),
       });
-    console.log(
-      "[queueDelegation] resolveQueuedJobProviderSession =>",
-      JSON.stringify({ providerSessionId, resumeProviderSession })
-    );
     const effectiveJob =
       providerSessionId === job.providerSessionId
         ? job
@@ -1525,6 +1534,20 @@ export class TmuxOrchestratorService {
           providerSessionId,
         }
       );
+    }
+    if (
+      shouldReuseProviderSession(session) &&
+      !explicitProviderSessionId &&
+      providerSessionId &&
+      providerSessionId !== session.providerSessionId
+    ) {
+      await updateOrchestratorSession(this.workspace, session.sessionId, {
+        providerSessionId,
+      });
+      session = {
+        ...session,
+        providerSessionId,
+      };
     }
     if (options.customAgentId !== session.selectedCustomAgentId) {
       await updateOrchestratorSession(this.workspace, session.sessionId, {
@@ -1808,21 +1831,20 @@ export class TmuxOrchestratorService {
   private async syncDiscoveredProviderSessionIds(
     session: OrchestratorSession
   ): Promise<OrchestratorSession> {
-    if (
-      (session.cliProvider ?? DEFAULT_ORCHESTRATOR_CLI_PROVIDER) !== "copilot"
-    ) {
-      return session;
-    }
-
     let jobsChanged = false;
+    const cliProvider =
+      session.cliProvider ?? DEFAULT_ORCHESTRATOR_CLI_PROVIDER;
     const discoveredProviderSessions: Array<{
       providerSessionId: string;
       timestamp: string;
     }> = [];
     const jobs = await Promise.all(
       session.jobs.map(async (job) => {
+        if (job.providerSessionId) {
+          return job;
+        }
         const discoveredProviderSessionId =
-          await this.readDiscoveredProviderSessionId(job);
+          await this.readDiscoveredProviderSessionId(cliProvider, job);
         if (discoveredProviderSessionId) {
           discoveredProviderSessions.push({
             providerSessionId: discoveredProviderSessionId,
@@ -1856,6 +1878,7 @@ export class TmuxOrchestratorService {
       (left, right) => right.timestamp.localeCompare(left.timestamp)
     )[0]?.providerSessionId;
     const shouldUpdateSession =
+      shouldReuseProviderSession(session) &&
       latestProviderSessionId &&
       latestProviderSessionId !== session.providerSessionId;
     if (!jobsChanged && !shouldUpdateSession) {
@@ -1871,11 +1894,14 @@ export class TmuxOrchestratorService {
     return {
       ...session,
       jobs,
-      providerSessionId: latestProviderSessionId ?? session.providerSessionId,
+      providerSessionId: shouldUpdateSession
+        ? latestProviderSessionId
+        : session.providerSessionId,
     };
   }
 
   private async readDiscoveredProviderSessionId(
+    cliProvider: string,
     job: Pick<OrchestratorJob, "outputPath">
   ): Promise<string | undefined> {
     if (!job.outputPath) {
@@ -1894,7 +1920,7 @@ export class TmuxOrchestratorService {
       return undefined;
     }
 
-    return extractCopilotProviderSessionId(output);
+    return extractProviderSessionId(cliProvider, output);
   }
 }
 
@@ -1993,6 +2019,7 @@ export function buildDelegationShellScript(input: {
           promptMode: input.promptMode,
           promptPath: input.promptPath,
           providerSessionId: input.providerSessionId,
+          resumeProviderSession: input.resumeProviderSession ?? false,
         })
       : cliProvider === CODEX_CLI_PROVIDER.id
         ? buildCodexCommand({
@@ -2018,17 +2045,26 @@ export function buildDelegationShellScript(input: {
                 promptPath: input.promptPath,
                 providerSessionId: input.providerSessionId,
               })
-            : buildCopilotCommand({
-                model: input.model,
-                prompt: input.prompt,
-                promptMode: input.promptMode,
-                promptPath: input.promptPath,
-                projectPurpose: input.projectPurpose,
-                customAgentId: input.customAgentId,
-                providerSessionId: input.providerSessionId,
-                resumeProviderSession: input.resumeProviderSession ?? false,
-                executionMode: input.executionMode ?? "standard",
-              });
+            : cliProvider === GROK_CLI_PROVIDER.id
+              ? buildGrokCommand({
+                  model: input.model,
+                  prompt: input.prompt,
+                  promptMode: input.promptMode,
+                  promptPath: input.promptPath,
+                  providerSessionId: input.providerSessionId,
+                  resumeProviderSession: input.resumeProviderSession ?? false,
+                })
+              : buildCopilotCommand({
+                  model: input.model,
+                  prompt: input.prompt,
+                  promptMode: input.promptMode,
+                  promptPath: input.promptPath,
+                  projectPurpose: input.projectPurpose,
+                  customAgentId: input.customAgentId,
+                  providerSessionId: input.providerSessionId,
+                  resumeProviderSession: input.resumeProviderSession ?? false,
+                  executionMode: input.executionMode ?? "standard",
+                });
   return [
     "#!/usr/bin/env bash",
     "set -u",
@@ -2155,6 +2191,53 @@ export function extractCopilotProviderSessionId(
   return undefined;
 }
 
+export function extractProviderSessionId(
+  cliProvider: string,
+  output: string
+): string | undefined {
+  if (cliProvider === "copilot") {
+    return extractCopilotProviderSessionId(output);
+  }
+
+  const fieldNames =
+    cliProvider === "codex"
+      ? ["thread_id", "threadId", "session_id", "sessionId"]
+      : cliProvider === "opencode"
+        ? ["sessionID", "sessionId", "session_id"]
+        : ["conversationId", "conversation_id", "sessionId", "session_id"];
+  for (const fieldName of fieldNames) {
+    const pattern = new RegExp(
+      `['"]${fieldName}['"]\\s*:\\s*['"]([^'"]+)['"]`,
+      "gi"
+    );
+    const matches = [...output.matchAll(pattern)];
+    for (const match of matches.reverse()) {
+      const candidate = normalizeDiscoveredProviderSessionId(match[1]);
+      if (candidate) {
+        return candidate;
+      }
+    }
+  }
+
+  const commandPatterns =
+    cliProvider === "antigravity"
+      ? [/\bagy\s+--conversation(?:=|\s+)([a-zA-Z0-9_.:-]+)/gi]
+      : cliProvider === "codex"
+        ? [/\b(?:thread|session)(?:\s+id)?\s*:\s*([a-zA-Z0-9_.:-]+)/gi]
+        : [];
+  for (const pattern of commandPatterns) {
+    const matches = [...output.matchAll(pattern)];
+    for (const match of matches.reverse()) {
+      const candidate = normalizeDiscoveredProviderSessionId(match[1]);
+      if (candidate) {
+        return candidate;
+      }
+    }
+  }
+
+  return undefined;
+}
+
 export function buildCopilotCommand(input: {
   model: string;
   prompt: string;
@@ -2174,7 +2257,7 @@ export function buildCopilotCommand(input: {
   const providerSessionFlag = input.providerSessionId
     ? input.resumeProviderSession
       ? ` --resume ${shellQuote(input.providerSessionId)}`
-      : ` --name ${shellQuote(input.providerSessionId)}`
+      : ` --session-id ${shellQuote(input.providerSessionId)}`
     : "";
   const promptFlag = "-p";
   const normalizePrompt = (value: string) => {
@@ -2207,20 +2290,23 @@ export function buildGeminiCommand(input: {
   promptMode: "inline" | "file";
   promptPath?: string;
   providerSessionId?: string;
+  resumeProviderSession: boolean;
 }): string {
   const providerSessionFlag = input.providerSessionId
-    ? ` --resume ${shellQuote(input.providerSessionId)}`
+    ? input.resumeProviderSession
+      ? ` --resume ${shellQuote(input.providerSessionId)}`
+      : ` --session-id ${shellQuote(input.providerSessionId)}`
     : "";
   if (input.promptMode === "file") {
     if (!input.promptPath) {
       throw new Error("Prompt file mode requires a promptPath.");
     }
-    return `gemini --model ${shellQuote(input.model)}${providerSessionFlag} --yolo < ${shellQuote(
+    return `gemini --model ${shellQuote(input.model)}${providerSessionFlag} --approval-mode yolo < ${shellQuote(
       input.promptPath
     )}`;
   }
 
-  return `gemini --model ${shellQuote(input.model)}${providerSessionFlag} --yolo --prompt ${shellQuote(
+  return `gemini --model ${shellQuote(input.model)}${providerSessionFlag} --approval-mode yolo --prompt ${shellQuote(
     input.prompt
   )}`;
 }
@@ -2245,7 +2331,7 @@ export function buildCodexCommand(input: {
             `Project purpose: ${input.projectPurpose}`,
           ].join("\n")
         : input.prompt;
-    return `codex resume --model ${shellQuote(input.model)} --approval-mode full-auto ${shellQuote(
+    return `codex exec resume --model ${shellQuote(input.model)} --dangerously-bypass-approvals-and-sandbox ${shellQuote(
       input.providerSessionId
     )} ${shellQuote(prompt)}`;
   }
@@ -2253,12 +2339,12 @@ export function buildCodexCommand(input: {
     if (!input.promptPath) {
       throw new Error("Prompt file mode requires a promptPath.");
     }
-    return `codex --model ${shellQuote(input.model)} --approval-mode full-auto < ${shellQuote(
+    return `codex exec --model ${shellQuote(input.model)} --dangerously-bypass-approvals-and-sandbox --json - < ${shellQuote(
       input.promptPath
     )}`;
   }
 
-  return `codex --model ${shellQuote(input.model)} --approval-mode full-auto -q ${shellQuote(
+  return `codex exec --model ${shellQuote(input.model)} --dangerously-bypass-approvals-and-sandbox --json ${shellQuote(
     input.prompt
   )}`;
 }
@@ -2273,16 +2359,16 @@ export function buildOpencodeCommand(input: {
   const providerSessionFlag = input.providerSessionId
     ? ` --session ${shellQuote(input.providerSessionId)}`
     : "";
+  const outputFormatFlag = input.providerSessionId ? "" : " --format json";
   if (input.promptMode === "file") {
     if (!input.promptPath) {
       throw new Error("Prompt file mode requires a promptPath.");
     }
-    return `opencode run --model ${shellQuote(input.model)}${providerSessionFlag} < ${shellQuote(
-      input.promptPath
-    )}`;
+    const prompt = `Read the full task instructions from ${input.promptPath} and carry them out in the current working directory.`;
+    return `opencode run --model ${shellQuote(input.model)}${providerSessionFlag}${outputFormatFlag} --dangerously-skip-permissions ${shellQuote(prompt)}`;
   }
 
-  return `opencode run --model ${shellQuote(input.model)}${providerSessionFlag} -p ${shellQuote(
+  return `opencode run --model ${shellQuote(input.model)}${providerSessionFlag}${outputFormatFlag} --dangerously-skip-permissions ${shellQuote(
     input.prompt
   )}`;
 }
@@ -2305,6 +2391,35 @@ export function buildAntigravityCommand(input: {
   }
 
   return `agy${providerSessionFlag}${yoloFlag} -p ${shellQuote(input.prompt)}`;
+}
+
+export function buildGrokCommand(input: {
+  model: string;
+  prompt: string;
+  promptMode: "inline" | "file";
+  promptPath?: string;
+  providerSessionId?: string;
+  resumeProviderSession: boolean;
+}): string {
+  const modelFlag =
+    input.model && input.model !== "auto"
+      ? ` -m ${shellQuote(input.model)}`
+      : "";
+  const command =
+    'grok_binary="$(command -v grok || command -v grok-build)" && "$grok_binary"';
+  const providerSessionFlag = input.providerSessionId
+    ? input.resumeProviderSession
+      ? ` --resume ${shellQuote(input.providerSessionId)}`
+      : ` --session-id ${shellQuote(input.providerSessionId)}`
+    : "";
+  if (input.promptMode === "file") {
+    if (!input.promptPath) {
+      throw new Error("Prompt file mode requires a promptPath.");
+    }
+    return `${command}${modelFlag}${providerSessionFlag} --always-approve -p "$(cat ${shellQuote(input.promptPath)})"`;
+  }
+
+  return `${command}${modelFlag}${providerSessionFlag} --always-approve -p ${shellQuote(input.prompt)}`;
 }
 
 function buildPromptWithAttachmentContext(

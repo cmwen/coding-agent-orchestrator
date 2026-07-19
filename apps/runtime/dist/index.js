@@ -15,7 +15,8 @@ import {
   orchestratorTerminalHistoryChunkSchema,
   orchestratorTerminalInputSchema,
   orchestratorWorkingTreeDiffSchema as orchestratorWorkingTreeDiffSchema2,
-  orchestratorWorkingTreeSchema as orchestratorWorkingTreeSchema2
+  orchestratorWorkingTreeSchema as orchestratorWorkingTreeSchema2,
+  providerCreditsDashboardSchema
 } from "@coding-agent-orchestrator/shared";
 import {
   resolveWorkspace,
@@ -98,6 +99,7 @@ function isConflictError(message) {
 
 // src/orchestrator.ts
 import { execFile as execFileCallback } from "child_process";
+import { randomUUID } from "crypto";
 import { promises as fs2 } from "fs";
 import path2 from "path";
 import { promisify } from "util";
@@ -146,6 +148,118 @@ import {
   writeMasterSessionContext,
   writeOrchestratorJobCompletion
 } from "@coding-agent-orchestrator/store";
+
+// src/cli-providers.ts
+var ORCHESTRATOR_CLI_PROVIDER_DEFINITIONS = [
+  {
+    descriptor: {
+      id: "copilot",
+      displayName: "GitHub Copilot CLI",
+      description: "Runs delegated jobs through the GitHub Copilot CLI inside the tmux workspace.",
+      capabilities: {
+        supportsCustomAgents: true,
+        supportsExecutionMode: true,
+        supportsProviderSessionResume: true
+      }
+    },
+    command: "copilot",
+    supportsProviderSessionBootstrap: true
+  },
+  {
+    descriptor: {
+      id: "gemini",
+      displayName: "Gemini CLI",
+      description: "Runs delegated jobs through the Gemini CLI inside the tmux workspace.",
+      capabilities: {
+        supportsCustomAgents: false,
+        supportsExecutionMode: false,
+        supportsProviderSessionResume: true
+      }
+    },
+    command: "gemini",
+    supportsProviderSessionBootstrap: true
+  },
+  {
+    descriptor: {
+      id: "codex",
+      displayName: "OpenAI Codex CLI",
+      description: "Runs delegated jobs through the OpenAI Codex CLI inside the tmux workspace.",
+      capabilities: {
+        supportsCustomAgents: false,
+        supportsExecutionMode: false,
+        supportsProviderSessionResume: true
+      }
+    },
+    command: "codex"
+  },
+  {
+    descriptor: {
+      id: "opencode",
+      displayName: "OpenCode CLI",
+      description: "Runs delegated jobs through the OpenCode CLI inside the tmux workspace.",
+      capabilities: {
+        supportsCustomAgents: false,
+        supportsExecutionMode: false,
+        supportsProviderSessionResume: true
+      }
+    },
+    command: "opencode"
+  },
+  {
+    descriptor: {
+      id: "antigravity",
+      displayName: "Google Antigravity CLI",
+      description: "Runs delegated jobs through the Google Antigravity CLI inside the tmux workspace.",
+      capabilities: {
+        supportsCustomAgents: false,
+        supportsExecutionMode: false,
+        supportsProviderSessionResume: true
+      }
+    },
+    command: "agy"
+  },
+  {
+    descriptor: {
+      id: "grok",
+      displayName: "Grok Build",
+      description: "Runs delegated jobs through xAI Grok Build's headless CLI mode inside the tmux workspace.",
+      capabilities: {
+        supportsCustomAgents: false,
+        supportsExecutionMode: false,
+        supportsProviderSessionResume: true
+      }
+    },
+    command: "grok",
+    commandAliases: ["grok-build"],
+    supportsProviderSessionBootstrap: true
+  }
+];
+function findCliProviderDefinition(providerId) {
+  return ORCHESTRATOR_CLI_PROVIDER_DEFINITIONS.find(
+    (provider) => provider.descriptor.id === providerId
+  );
+}
+function requireCliProviderDefinition(providerId) {
+  const provider = findCliProviderDefinition(providerId);
+  if (!provider) {
+    throw new Error(`Unknown orchestrator CLI provider: ${providerId}`);
+  }
+  return provider;
+}
+function normalizeCliProviderId(providerId, fallbackProviderId = "copilot") {
+  const normalized = providerId?.trim();
+  return findCliProviderDefinition(normalized)?.descriptor.id ?? fallbackProviderId;
+}
+function providerSupportsSessionResume(providerId) {
+  return Boolean(
+    findCliProviderDefinition(providerId)?.descriptor.capabilities.supportsProviderSessionResume
+  );
+}
+function providerSupportsSessionBootstrap(providerId) {
+  return Boolean(
+    findCliProviderDefinition(providerId)?.supportsProviderSessionBootstrap
+  );
+}
 
 // src/repository-browser.ts
 import { promises as fs } from "fs";
@@ -340,58 +454,12 @@ var COPILOT_SESSION_ID_PATTERNS = [
   /(?:^|\b)session(?:\s+started)?\.?\s*(?:session\s+)?id\s*:\s*([^\r\n]+)/gim,
   /\/sessions\/([A-Za-z0-9][A-Za-z0-9._:-]*)\b/gi
 ];
-var COPILOT_CLI_PROVIDER = {
-  id: "copilot",
-  displayName: "GitHub Copilot CLI",
-  description: "Runs delegated jobs through the GitHub Copilot CLI inside the tmux workspace.",
-  capabilities: {
-    supportsCustomAgents: true,
-    supportsExecutionMode: true
-  }
-};
-var GEMINI_CLI_PROVIDER = {
-  id: "gemini",
-  displayName: "Gemini CLI",
-  description: "Runs delegated jobs through the Gemini CLI inside the tmux workspace.",
-  capabilities: {
-    supportsCustomAgents: false,
-    supportsExecutionMode: false
-  }
-};
-var CODEX_CLI_PROVIDER = {
-  id: "codex",
-  displayName: "OpenAI Codex CLI",
-  description: "Runs delegated jobs through the OpenAI Codex CLI inside the tmux workspace.",
-  capabilities: {
-    supportsCustomAgents: false,
-    supportsExecutionMode: false
-  }
-};
-var OPENCODE_CLI_PROVIDER = {
-  id: "opencode",
-  displayName: "OpenCode CLI",
-  description: "Runs delegated jobs through the OpenCode CLI inside the tmux workspace.",
-  capabilities: {
-    supportsCustomAgents: false,
-    supportsExecutionMode: false
-  }
-};
-var ANTIGRAVITY_CLI_PROVIDER = {
-  id: "antigravity",
-  displayName: "Google Antigravity CLI",
-  description: "Runs delegated jobs through the Google Antigravity CLI inside the tmux workspace.",
-  capabilities: {
-    supportsCustomAgents: false,
-    supportsExecutionMode: false
-  }
-};
-var ORCHESTRATOR_CLI_PROVIDERS = [
-  COPILOT_CLI_PROVIDER,
-  GEMINI_CLI_PROVIDER,
-  CODEX_CLI_PROVIDER,
-  OPENCODE_CLI_PROVIDER,
-  ANTIGRAVITY_CLI_PROVIDER
-];
+var COPILOT_CLI_PROVIDER = requireCliProviderDefinition("copilot").descriptor;
+var GEMINI_CLI_PROVIDER = requireCliProviderDefinition("gemini").descriptor;
+var CODEX_CLI_PROVIDER = requireCliProviderDefinition("codex").descriptor;
+var OPENCODE_CLI_PROVIDER = requireCliProviderDefinition("opencode").descriptor;
+var ANTIGRAVITY_CLI_PROVIDER = requireCliProviderDefinition("antigravity").descriptor;
+var GROK_CLI_PROVIDER = requireCliProviderDefinition("grok").descriptor;
 var VALID_PROVIDER_SESSION_ID_RE = /^[a-zA-Z0-9_\-.:]+$/;
 function normalizeProviderSessionId(value) {
   const normalized = value?.trim();
@@ -408,13 +476,16 @@ function normalizeProviderSessionId(value) {
   return normalized;
 }
 function supportsProviderSessionResume(cliProvider) {
-  return cliProvider === COPILOT_CLI_PROVIDER.id || cliProvider === GEMINI_CLI_PROVIDER.id || cliProvider === CODEX_CLI_PROVIDER.id || cliProvider === OPENCODE_CLI_PROVIDER.id || cliProvider === ANTIGRAVITY_CLI_PROVIDER.id;
+  return providerSupportsSessionResume(cliProvider);
 }
 function supportsProviderSessionBootstrap(cliProvider) {
-  return cliProvider === COPILOT_CLI_PROVIDER.id;
+  return providerSupportsSessionBootstrap(cliProvider);
 }
-function defaultJobProviderSessionId(cliProvider, jobId) {
-  return supportsProviderSessionBootstrap(cliProvider) ? `job-${jobId}` : void 0;
+function defaultJobProviderSessionId(cliProvider) {
+  return supportsProviderSessionBootstrap(cliProvider) ? randomUUID() : void 0;
+}
+function shouldReuseProviderSession(session) {
+  return session.reuseProviderSession !== false;
 }
 function resolveQueuedJobProviderSession(input) {
   const requestedProviderSessionId = normalizeProviderSessionId(
@@ -426,11 +497,14 @@ function resolveQueuedJobProviderSession(input) {
       resumeProviderSession: true
     };
   }
+  if (input.bootstrapProviderSession === false) {
+    return {
+      providerSessionId: void 0,
+      resumeProviderSession: false
+    };
+  }
   return {
-    providerSessionId: defaultJobProviderSessionId(
-      input.cliProvider,
-      input.jobId
-    ),
+    providerSessionId: defaultJobProviderSessionId(input.cliProvider),
     resumeProviderSession: false
   };
 }
@@ -445,48 +519,41 @@ var TmuxOrchestratorService = class {
   defaultProjectPath;
   tmuxSessionName;
   resolveModelDescriptor;
+  cliInstallationCache;
   async getCapabilities() {
     const smtp = readRuntimeSmtpEnv();
-    const [
-      tmuxInstalled,
-      copilotInstalled,
-      geminiInstalled,
-      codexInstalled,
-      opencodeInstalled,
-      antigravityInstalled,
-      sessions
-    ] = await Promise.all([
+    const [tmuxInstalled, installedProviderIds, sessions] = await Promise.all([
       this.commandExists("tmux"),
-      this.commandExists("copilot"),
-      this.commandExists("gemini"),
-      this.commandExists("codex"),
-      this.commandExists("opencode"),
-      this.commandExists("agy"),
+      this.getInstalledCliProviderIds(),
       listOrchestratorSessions(this.workspace)
     ]);
     const recentProjectPaths = [
       ...new Set(sessions.map((session) => session.projectPath))
     ].filter((projectPath) => projectPath !== this.defaultProjectPath).slice(0, 8);
-    const cliProviders = ORCHESTRATOR_CLI_PROVIDERS.filter((provider) => {
-      if (provider.id === "copilot") return copilotInstalled;
-      if (provider.id === "gemini") return geminiInstalled;
-      if (provider.id === "codex") return codexInstalled;
-      if (provider.id === "opencode") return opencodeInstalled;
-      if (provider.id === "antigravity") return antigravityInstalled;
-      return false;
-    });
+    const supportedCliProviders = ORCHESTRATOR_CLI_PROVIDER_DEFINITIONS.map(
+      (provider) => ({
+        ...provider.descriptor,
+        command: provider.command,
+        installed: installedProviderIds.has(provider.descriptor.id)
+      })
+    );
+    const cliProviders = supportedCliProviders.filter(
+      (provider) => provider.installed
+    );
     return orchestratorCapabilitiesSchema.parse({
       available: tmuxInstalled && cliProviders.length > 0,
       defaultProjectPath: this.defaultProjectPath,
       recentProjectPaths,
       tmuxInstalled,
-      copilotInstalled,
-      geminiInstalled,
-      codexInstalled,
-      opencodeInstalled,
-      antigravityInstalled,
+      copilotInstalled: installedProviderIds.has("copilot"),
+      geminiInstalled: installedProviderIds.has("gemini"),
+      codexInstalled: installedProviderIds.has("codex"),
+      opencodeInstalled: installedProviderIds.has("opencode"),
+      antigravityInstalled: installedProviderIds.has("antigravity"),
+      grokInstalled: installedProviderIds.has("grok"),
       defaultCliProvider: cliProviders[0]?.id ?? DEFAULT_ORCHESTRATOR_CLI_PROVIDER,
       cliProviders,
+      supportedCliProviders,
       tmuxSessionName: this.tmuxSessionName,
       emailDeliveryAvailable: this.isEmailDeliveryConfigured(),
       emailFromAddress: smtp.from
@@ -686,6 +753,7 @@ var TmuxOrchestratorService = class {
       availableCustomAgents,
       selectedCustomAgentId,
       providerSessionId,
+      reuseProviderSession: request.reuseProviderSession ?? true,
       executionMode,
       tmuxSessionName: this.tmuxSessionName,
       tmuxWindowName,
@@ -705,6 +773,9 @@ var TmuxOrchestratorService = class {
     const title = request.title;
     const cliProvider = this.normalizeCliProvider(request.cliProvider);
     const model = request.model;
+    const providerChanged = cliProvider !== (session.cliProvider ?? DEFAULT_ORCHESTRATOR_CLI_PROVIDER);
+    const providerSessionId = providerChanged ? normalizeProviderSessionId(request.providerSessionId) : request.providerSessionId !== void 0 ? normalizeProviderSessionId(request.providerSessionId) : session.providerSessionId;
+    const reuseProviderSession = request.reuseProviderSession ?? shouldReuseProviderSession(session);
     await this.assertCapabilities(cliProvider);
     const availableCustomAgents = cliProvider === COPILOT_CLI_PROVIDER.id ? session.availableCustomAgents : [];
     const selectedCustomAgentId = cliProvider === COPILOT_CLI_PROVIDER.id ? this.resolveSelectedCustomAgentId(
@@ -717,7 +788,7 @@ var TmuxOrchestratorService = class {
       session.projectPath,
       session.sessionId
     );
-    const hasChanges = title !== session.title || cliProvider !== (session.cliProvider ?? DEFAULT_ORCHESTRATOR_CLI_PROVIDER) || model !== session.model || selectedCustomAgentId !== session.selectedCustomAgentId || executionMode !== (session.executionMode ?? "standard") || tmuxWindowName !== session.tmuxWindowName;
+    const hasChanges = title !== session.title || providerChanged || model !== session.model || providerSessionId !== session.providerSessionId || reuseProviderSession !== shouldReuseProviderSession(session) || selectedCustomAgentId !== session.selectedCustomAgentId || executionMode !== (session.executionMode ?? "standard") || tmuxWindowName !== session.tmuxWindowName;
     if (!hasChanges) {
       return session;
     }
@@ -734,6 +805,8 @@ var TmuxOrchestratorService = class {
       model,
       availableCustomAgents,
       selectedCustomAgentId,
+      providerSessionId,
+      reuseProviderSession,
       executionMode,
       tmuxWindowName
     });
@@ -1081,8 +1154,23 @@ var TmuxOrchestratorService = class {
     const syncedSession = await this.syncDiscoveredProviderSessionIds(session);
     const paneExists = await this.tmuxPaneExists(session.tmuxPaneId);
     if (paneExists) {
-      const queuedJob = getNextQueuedJob(syncedSession.jobs);
+      let queuedJob = getNextQueuedJob(syncedSession.jobs);
       if (!syncedSession.jobs.some((job) => job.status === "running") && queuedJob) {
+        const lateBoundProviderSessionId = shouldReuseProviderSession(syncedSession) && supportsProviderSessionResume(syncedSession.cliProvider) && !queuedJob.providerSessionId ? syncedSession.providerSessionId : void 0;
+        if (lateBoundProviderSessionId) {
+          await updateOrchestratorJob(
+            this.workspace,
+            syncedSession.sessionId,
+            queuedJob.jobId,
+            { providerSessionId: lateBoundProviderSessionId }
+          );
+          queuedJob = await this.prepareJobArtifacts(
+            syncedSession,
+            { ...queuedJob, providerSessionId: lateBoundProviderSessionId },
+            await this.resolveRetryPrompt(queuedJob),
+            true
+          );
+        }
         await this.startPreparedJob(syncedSession, queuedJob);
         return getOrchestratorSession(this.workspace, session.sessionId);
       }
@@ -1157,6 +1245,11 @@ var TmuxOrchestratorService = class {
         "The `agy` CLI is required for Google Antigravity-backed orchestrator sessions."
       );
     }
+    if (cliProvider === GROK_CLI_PROVIDER.id && !capabilities.grokInstalled) {
+      throw new Error(
+        "The `grok` CLI is required for Grok Build-backed orchestrator sessions."
+      );
+    }
   }
   async commandExists(command) {
     try {
@@ -1165,6 +1258,30 @@ var TmuxOrchestratorService = class {
     } catch {
       return false;
     }
+  }
+  async getInstalledCliProviderIds() {
+    const now = Date.now();
+    const cached = this.cliInstallationCache;
+    if (cached && cached.expiresAt > now) {
+      return cached.installedProviderIds;
+    }
+    const installationResults = await Promise.all(
+      ORCHESTRATOR_CLI_PROVIDER_DEFINITIONS.map(async (provider) => {
+        const commands = [provider.command, ...provider.commandAliases ?? []];
+        const installed = (await Promise.all(
+          commands.map((command) => this.commandExists(command))
+        )).some(Boolean);
+        return [provider.descriptor.id, installed];
+      })
+    );
+    const installedProviderIds = new Set(
+      installationResults.filter(([, installed]) => installed).map(([providerId]) => providerId)
+    );
+    this.cliInstallationCache = {
+      expiresAt: now + 3e4,
+      installedProviderIds
+    };
+    return installedProviderIds;
   }
   async assertProjectPath(projectPath) {
     const stat = await fs2.stat(projectPath).catch((error) => {
@@ -1332,14 +1449,7 @@ var TmuxOrchestratorService = class {
     }
   }
   normalizeCliProvider(cliProvider) {
-    const normalized = cliProvider?.trim() || DEFAULT_ORCHESTRATOR_CLI_PROVIDER;
-    if (normalized === GEMINI_CLI_PROVIDER.id) return GEMINI_CLI_PROVIDER.id;
-    if (normalized === CODEX_CLI_PROVIDER.id) return CODEX_CLI_PROVIDER.id;
-    if (normalized === OPENCODE_CLI_PROVIDER.id)
-      return OPENCODE_CLI_PROVIDER.id;
-    if (normalized === ANTIGRAVITY_CLI_PROVIDER.id)
-      return ANTIGRAVITY_CLI_PROVIDER.id;
-    return COPILOT_CLI_PROVIDER.id;
+    return normalizeCliProviderId(cliProvider);
   }
   async finalizeCancelledJob(sessionId, jobId, completedAt, sessionUpdates) {
     await updateOrchestratorJob(this.workspace, sessionId, jobId, {
@@ -1362,35 +1472,25 @@ var TmuxOrchestratorService = class {
     const cliProvider = session.cliProvider ?? DEFAULT_ORCHESTRATOR_CLI_PROVIDER;
     const promptMode = attachment || shouldMaterializePrompt(delegatedPrompt) ? "file" : "inline";
     const premiumUsage = await this.estimatePremiumUsage(session.model);
-    console.log(
-      "[queueDelegation] options.providerSessionId:",
-      JSON.stringify(options.providerSessionId),
-      "| cliProvider:",
-      cliProvider
+    const explicitProviderSessionId = normalizeProviderSessionId(
+      options.providerSessionId
     );
+    const requestedProviderSessionId = explicitProviderSessionId ?? (shouldReuseProviderSession(session) ? normalizeProviderSessionId(session.providerSessionId) : void 0);
     const job = await createOrchestratorJob(this.workspace, session.sessionId, {
       prompt: delegatedPrompt,
       promptPreview: delegatedPrompt.trim().slice(0, 160) || attachment?.name || "Delegated prompt",
-      providerSessionId: supportsProviderSessionResume(cliProvider) ? normalizeProviderSessionId(options.providerSessionId) : void 0,
+      providerSessionId: supportsProviderSessionResume(cliProvider) ? requestedProviderSessionId : void 0,
       promptMode,
       attachment,
       customAgentId: options.customAgentId,
       scheduleId: options.scheduleId,
       premiumUsage
     });
-    console.log(
-      "[queueDelegation] job.providerSessionId after create:",
-      JSON.stringify(job.providerSessionId)
-    );
     const { providerSessionId, resumeProviderSession } = resolveQueuedJobProviderSession({
       cliProvider,
-      jobId: job.jobId,
-      requestedProviderSessionId: options.providerSessionId
+      requestedProviderSessionId,
+      bootstrapProviderSession: shouldReuseProviderSession(session)
     });
-    console.log(
-      "[queueDelegation] resolveQueuedJobProviderSession =>",
-      JSON.stringify({ providerSessionId, resumeProviderSession })
-    );
     const effectiveJob = providerSessionId === job.providerSessionId ? job : {
       ...job,
       providerSessionId
@@ -1404,6 +1504,15 @@ var TmuxOrchestratorService = class {
           providerSessionId
         }
       );
+    }
+    if (shouldReuseProviderSession(session) && !explicitProviderSessionId && providerSessionId && providerSessionId !== session.providerSessionId) {
+      await updateOrchestratorSession(this.workspace, session.sessionId, {
+        providerSessionId
+      });
+      session = {
+        ...session,
+        providerSessionId
+      };
     }
     if (options.customAgentId !== session.selectedCustomAgentId) {
       await updateOrchestratorSession(this.workspace, session.sessionId, {
@@ -1631,14 +1740,15 @@ var TmuxOrchestratorService = class {
     ]);
   }
   async syncDiscoveredProviderSessionIds(session) {
-    if ((session.cliProvider ?? DEFAULT_ORCHESTRATOR_CLI_PROVIDER) !== "copilot") {
-      return session;
-    }
     let jobsChanged = false;
+    const cliProvider = session.cliProvider ?? DEFAULT_ORCHESTRATOR_CLI_PROVIDER;
     const discoveredProviderSessions = [];
     const jobs = await Promise.all(
       session.jobs.map(async (job) => {
-        const discoveredProviderSessionId = await this.readDiscoveredProviderSessionId(job);
+        if (job.providerSessionId) {
+          return job;
+        }
+        const discoveredProviderSessionId = await this.readDiscoveredProviderSessionId(cliProvider, job);
         if (discoveredProviderSessionId) {
           discoveredProviderSessions.push({
             providerSessionId: discoveredProviderSessionId,
@@ -1666,7 +1776,7 @@ var TmuxOrchestratorService = class {
     const latestProviderSessionId = discoveredProviderSessions.sort(
       (left, right) => right.timestamp.localeCompare(left.timestamp)
     )[0]?.providerSessionId;
-    const shouldUpdateSession = latestProviderSessionId && latestProviderSessionId !== session.providerSessionId;
+    const shouldUpdateSession = shouldReuseProviderSession(session) && latestProviderSessionId && latestProviderSessionId !== session.providerSessionId;
     if (!jobsChanged && !shouldUpdateSession) {
       return session;
     }
@@ -1678,10 +1788,10 @@ var TmuxOrchestratorService = class {
     return {
       ...session,
       jobs,
-      providerSessionId: latestProviderSessionId ?? session.providerSessionId
+      providerSessionId: shouldUpdateSession ? latestProviderSessionId : session.providerSessionId
     };
   }
-  async readDiscoveredProviderSessionId(job) {
+  async readDiscoveredProviderSessionId(cliProvider, job) {
     if (!job.outputPath) {
       return void 0;
     }
@@ -1694,7 +1804,7 @@ var TmuxOrchestratorService = class {
     if (!output) {
       return void 0;
     }
-    return extractCopilotProviderSessionId(output);
+    return extractProviderSessionId(cliProvider, output);
   }
 };
 function deriveSessionStatus(session, paneExists) {
@@ -1754,7 +1864,8 @@ function buildDelegationShellScript(input) {
     prompt: input.prompt,
     promptMode: input.promptMode,
     promptPath: input.promptPath,
-    providerSessionId: input.providerSessionId
+    providerSessionId: input.providerSessionId,
+    resumeProviderSession: input.resumeProviderSession ?? false
   }) : cliProvider === CODEX_CLI_PROVIDER.id ? buildCodexCommand({
     model: input.model,
     prompt: input.prompt,
@@ -1773,6 +1884,13 @@ function buildDelegationShellScript(input) {
     promptMode: input.promptMode,
     promptPath: input.promptPath,
     providerSessionId: input.providerSessionId
+  }) : cliProvider === GROK_CLI_PROVIDER.id ? buildGrokCommand({
+    model: input.model,
+    prompt: input.prompt,
+    promptMode: input.promptMode,
+    promptPath: input.promptPath,
+    providerSessionId: input.providerSessionId,
+    resumeProviderSession: input.resumeProviderSession ?? false
   }) : buildCopilotCommand({
     model: input.model,
     prompt: input.prompt,
@@ -1883,10 +2001,40 @@ function extractCopilotProviderSessionId(output) {
   }
   return void 0;
 }
+function extractProviderSessionId(cliProvider, output) {
+  if (cliProvider === "copilot") {
+    return extractCopilotProviderSessionId(output);
+  }
+  const fieldNames = cliProvider === "codex" ? ["thread_id", "threadId", "session_id", "sessionId"] : cliProvider === "opencode" ? ["sessionID", "sessionId", "session_id"] : ["conversationId", "conversation_id", "sessionId", "session_id"];
+  for (const fieldName of fieldNames) {
+    const pattern = new RegExp(
+      `['"]${fieldName}['"]\\s*:\\s*['"]([^'"]+)['"]`,
+      "gi"
+    );
+    const matches = [...output.matchAll(pattern)];
+    for (const match of matches.reverse()) {
+      const candidate = normalizeDiscoveredProviderSessionId(match[1]);
+      if (candidate) {
+        return candidate;
+      }
+    }
+  }
+  const commandPatterns = cliProvider === "antigravity" ? [/\bagy\s+--conversation(?:=|\s+)([a-zA-Z0-9_.:-]+)/gi] : cliProvider === "codex" ? [/\b(?:thread|session)(?:\s+id)?\s*:\s*([a-zA-Z0-9_.:-]+)/gi] : [];
+  for (const pattern of commandPatterns) {
+    const matches = [...output.matchAll(pattern)];
+    for (const match of matches.reverse()) {
+      const candidate = normalizeDiscoveredProviderSessionId(match[1]);
+      if (candidate) {
+        return candidate;
+      }
+    }
+  }
+  return void 0;
+}
 function buildCopilotCommand(input) {
   const agentFlag = input.customAgentId ? ` --agent ${shellQuote(input.customAgentId)}` : "";
   const autopilotFlag = input.executionMode === "auto" ? " --mode autopilot" : "";
-  const providerSessionFlag = input.providerSessionId ? input.resumeProviderSession ? ` --resume ${shellQuote(input.providerSessionId)}` : ` --name ${shellQuote(input.providerSessionId)}` : "";
+  const providerSessionFlag = input.providerSessionId ? input.resumeProviderSession ? ` --resume ${shellQuote(input.providerSessionId)}` : ` --session-id ${shellQuote(input.providerSessionId)}` : "";
   const promptFlag = "-p";
   const normalizePrompt = (value) => {
     if (input.executionMode === "fleet") {
@@ -1912,16 +2060,16 @@ function buildCopilotCommand(input) {
   )}`;
 }
 function buildGeminiCommand(input) {
-  const providerSessionFlag = input.providerSessionId ? ` --resume ${shellQuote(input.providerSessionId)}` : "";
+  const providerSessionFlag = input.providerSessionId ? input.resumeProviderSession ? ` --resume ${shellQuote(input.providerSessionId)}` : ` --session-id ${shellQuote(input.providerSessionId)}` : "";
   if (input.promptMode === "file") {
     if (!input.promptPath) {
       throw new Error("Prompt file mode requires a promptPath.");
     }
-    return `gemini --model ${shellQuote(input.model)}${providerSessionFlag} --yolo < ${shellQuote(
+    return `gemini --model ${shellQuote(input.model)}${providerSessionFlag} --approval-mode yolo < ${shellQuote(
       input.promptPath
     )}`;
   }
-  return `gemini --model ${shellQuote(input.model)}${providerSessionFlag} --yolo --prompt ${shellQuote(
+  return `gemini --model ${shellQuote(input.model)}${providerSessionFlag} --approval-mode yolo --prompt ${shellQuote(
     input.prompt
   )}`;
 }
@@ -1935,7 +2083,7 @@ function buildCodexCommand(input) {
       `Task file: ${input.promptPath}`,
       `Project purpose: ${input.projectPurpose}`
     ].join("\n") : input.prompt;
-    return `codex resume --model ${shellQuote(input.model)} --approval-mode full-auto ${shellQuote(
+    return `codex exec resume --model ${shellQuote(input.model)} --dangerously-bypass-approvals-and-sandbox ${shellQuote(
       input.providerSessionId
     )} ${shellQuote(prompt)}`;
   }
@@ -1943,25 +2091,25 @@ function buildCodexCommand(input) {
     if (!input.promptPath) {
       throw new Error("Prompt file mode requires a promptPath.");
     }
-    return `codex --model ${shellQuote(input.model)} --approval-mode full-auto < ${shellQuote(
+    return `codex exec --model ${shellQuote(input.model)} --dangerously-bypass-approvals-and-sandbox --json - < ${shellQuote(
       input.promptPath
     )}`;
   }
-  return `codex --model ${shellQuote(input.model)} --approval-mode full-auto -q ${shellQuote(
+  return `codex exec --model ${shellQuote(input.model)} --dangerously-bypass-approvals-and-sandbox --json ${shellQuote(
     input.prompt
   )}`;
 }
 function buildOpencodeCommand(input) {
   const providerSessionFlag = input.providerSessionId ? ` --session ${shellQuote(input.providerSessionId)}` : "";
+  const outputFormatFlag = input.providerSessionId ? "" : " --format json";
   if (input.promptMode === "file") {
     if (!input.promptPath) {
       throw new Error("Prompt file mode requires a promptPath.");
     }
-    return `opencode run --model ${shellQuote(input.model)}${providerSessionFlag} < ${shellQuote(
-      input.promptPath
-    )}`;
+    const prompt = `Read the full task instructions from ${input.promptPath} and carry them out in the current working directory.`;
+    return `opencode run --model ${shellQuote(input.model)}${providerSessionFlag}${outputFormatFlag} --dangerously-skip-permissions ${shellQuote(prompt)}`;
   }
-  return `opencode run --model ${shellQuote(input.model)}${providerSessionFlag} -p ${shellQuote(
+  return `opencode run --model ${shellQuote(input.model)}${providerSessionFlag}${outputFormatFlag} --dangerously-skip-permissions ${shellQuote(
     input.prompt
   )}`;
 }
@@ -1975,6 +2123,18 @@ function buildAntigravityCommand(input) {
     return `agy${providerSessionFlag}${yoloFlag} -p "$(cat ${shellQuote(input.promptPath)})"`;
   }
   return `agy${providerSessionFlag}${yoloFlag} -p ${shellQuote(input.prompt)}`;
+}
+function buildGrokCommand(input) {
+  const modelFlag = input.model && input.model !== "auto" ? ` -m ${shellQuote(input.model)}` : "";
+  const command = 'grok_binary="$(command -v grok || command -v grok-build)" && "$grok_binary"';
+  const providerSessionFlag = input.providerSessionId ? input.resumeProviderSession ? ` --resume ${shellQuote(input.providerSessionId)}` : ` --session-id ${shellQuote(input.providerSessionId)}` : "";
+  if (input.promptMode === "file") {
+    if (!input.promptPath) {
+      throw new Error("Prompt file mode requires a promptPath.");
+    }
+    return `${command}${modelFlag}${providerSessionFlag} --always-approve -p "$(cat ${shellQuote(input.promptPath)})"`;
+  }
+  return `${command}${modelFlag}${providerSessionFlag} --always-approve -p ${shellQuote(input.prompt)}`;
 }
 function buildPromptWithAttachmentContext(storeRoot, prompt, attachment) {
   const trimmedPrompt = prompt.trim();
@@ -2397,6 +2557,468 @@ function slugify(value) {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "session";
 }
 
+// src/provider-credits.ts
+import {
+  execFile as execFileCallback2,
+  spawn
+} from "child_process";
+import { promisify as promisify2 } from "util";
+var execFile2 = promisify2(execFileCallback2);
+var CACHE_TTL_MS = 6e4;
+var COMMAND_TIMEOUT_MS = 1e4;
+var ProviderCreditsService = class {
+  cached;
+  inFlight;
+  async getDashboard(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && this.cached && this.cached.expiresAt > now) {
+      return this.cached.value;
+    }
+    if (this.inFlight) {
+      return this.inFlight;
+    }
+    this.inFlight = this.collectDashboard().finally(() => {
+      this.inFlight = void 0;
+    });
+    const value = await this.inFlight;
+    this.cached = { expiresAt: now + CACHE_TTL_MS, value };
+    return value;
+  }
+  async collectDashboard() {
+    const checkedAt = (/* @__PURE__ */ new Date()).toISOString();
+    const providers = await Promise.all(
+      ORCHESTRATOR_CLI_PROVIDER_DEFINITIONS.map(
+        (definition) => this.collectProvider(definition, checkedAt)
+      )
+    );
+    return {
+      checkedAt,
+      cacheTtlSeconds: CACHE_TTL_MS / 1e3,
+      providers
+    };
+  }
+  async collectProvider(definition, checkedAt) {
+    const installed = await commandExists([
+      definition.command,
+      ...definition.commandAliases ?? []
+    ]);
+    const base = {
+      providerId: definition.descriptor.id,
+      displayName: definition.descriptor.displayName,
+      installed,
+      checkedAt
+    };
+    if (!installed) {
+      return {
+        ...base,
+        status: "not-installed",
+        source: "none",
+        summary: `Install the ${definition.command} command to read usage on this machine.`,
+        metrics: []
+      };
+    }
+    try {
+      switch (definition.descriptor.id) {
+        case "copilot":
+          return { ...base, ...await collectCopilotCredits() };
+        case "codex":
+          return { ...base, ...await collectCodexCredits() };
+        case "opencode":
+          return { ...base, ...await collectOpenCodeStats() };
+        case "gemini":
+          return {
+            ...base,
+            status: "interactive",
+            source: "provider-dashboard",
+            summary: "Gemini CLI does not expose a documented headless balance command. Consumer Google sign-in has moved to Antigravity; Standard and Enterprise quotas remain in Google Cloud.",
+            metrics: [],
+            accountUrl: "https://developers.google.com/gemini-code-assist/resources/quotas",
+            actionLabel: "View Gemini quotas"
+          };
+        case "antigravity":
+          return {
+            ...base,
+            status: "interactive",
+            source: "provider-dashboard",
+            summary: "Run /usage (or /quota) inside Antigravity CLI for a freshly refreshed, per-model quota breakdown.",
+            metrics: [],
+            accountUrl: "https://antigravity.google/docs/cli/commands/usage",
+            actionLabel: "How to check /usage"
+          };
+        case "grok":
+          return {
+            ...base,
+            status: "interactive",
+            source: "provider-dashboard",
+            summary: "Grok Build shares a weekly SuperGrok pool with other Grok products. The CLI has no documented usage subcommand; open Settings \u2192 Usage for the live balance and reset time.",
+            metrics: [],
+            accountUrl: "https://grok.com/",
+            actionLabel: "Open Grok usage"
+          };
+        default:
+          return {
+            ...base,
+            status: "unavailable",
+            source: "none",
+            summary: "This provider does not expose a supported usage interface.",
+            metrics: []
+          };
+      }
+    } catch {
+      return providerErrorFallback(definition, checkedAt);
+    }
+  }
+};
+async function collectCopilotCredits() {
+  const response = await requestCopilotRpc("account.getQuota", {});
+  const result = asObject(response.result);
+  const snapshots = asObject(result?.quotaSnapshots);
+  if (!snapshots || Object.keys(snapshots).length === 0) {
+    throw new Error("Copilot returned no quota snapshots.");
+  }
+  const preferredOrder = ["chat", "completions", "premium_interactions"];
+  const entries = Object.entries(snapshots).sort(
+    ([left], [right]) => providerMetricOrder(left, preferredOrder) - providerMetricOrder(right, preferredOrder)
+  );
+  const metrics = entries.map(
+    ([id, raw]) => copilotSnapshotToMetric(id, raw)
+  );
+  return {
+    status: "live",
+    source: "live-cli",
+    summary: "Live allowance reported by your signed-in Copilot account.",
+    metrics,
+    accountUrl: "https://github.com/settings/billing",
+    actionLabel: "Open GitHub billing"
+  };
+}
+async function collectCodexCredits() {
+  const result = await requestCodexRateLimits();
+  const primarySnapshot = asObject(result.rateLimits);
+  const byId = asObject(result.rateLimitsByLimitId);
+  const snapshots = primarySnapshot ? [primarySnapshot] : Object.values(byId ?? {}).map((value) => value);
+  if (snapshots.length === 0) {
+    throw new Error("Codex returned no rate-limit snapshots.");
+  }
+  const snapshot = snapshots[0];
+  if (!snapshot) {
+    throw new Error("Codex returned no rate-limit snapshots.");
+  }
+  const metrics = [];
+  if (snapshot.primary) {
+    metrics.push(codexWindowToMetric("primary", snapshot.primary));
+  }
+  if (snapshot.secondary) {
+    metrics.push(codexWindowToMetric("secondary", snapshot.secondary));
+  }
+  if (snapshot.credits) {
+    const balance = snapshot.credits.unlimited ? "Unlimited" : `${snapshot.credits.balance ?? "0"} credits`;
+    metrics.push({
+      id: "purchased-credits",
+      label: "Purchased credits",
+      value: balance,
+      detail: "Separate from the included plan rate limit."
+    });
+  }
+  const resetCredits = asObject(result.rateLimitResetCredits);
+  const availableResets = asFiniteNumber(resetCredits?.availableCount);
+  if (availableResets && availableResets > 0) {
+    metrics.push({
+      id: "rate-limit-resets",
+      label: "Full resets",
+      value: `${availableResets} available`
+    });
+  }
+  return {
+    status: "live",
+    source: "live-cli",
+    summary: "Live allowance and credits reported by your signed-in Codex account.",
+    plan: snapshot.planType ? formatIdentifier(snapshot.planType) : void 0,
+    metrics,
+    accountUrl: "https://chatgpt.com/codex/settings/usage",
+    actionLabel: "Open Codex usage"
+  };
+}
+async function collectOpenCodeStats() {
+  const { stdout } = await execFile2(
+    "opencode",
+    ["stats", "--days", "30", "--models", "5"],
+    {
+      encoding: "utf8",
+      maxBuffer: 1e6,
+      timeout: COMMAND_TIMEOUT_MS
+    }
+  );
+  const stats = parseOpenCodeStats(stdout);
+  const metrics = [
+    {
+      id: "cost-30d",
+      label: "30-day local cost",
+      value: stats.totalCost ?? "$0.00"
+    },
+    {
+      id: "tokens-30d",
+      label: "30-day tokens",
+      value: formatNumber(stats.inputTokens + stats.outputTokens),
+      detail: `${formatNumber(stats.inputTokens)} input \xB7 ${formatNumber(stats.outputTokens)} output`
+    },
+    {
+      id: "sessions-30d",
+      label: "30-day sessions",
+      value: formatNumber(stats.sessions)
+    }
+  ];
+  return {
+    status: "local",
+    source: "local-cli",
+    summary: "Local usage across OpenCode sessions. OpenCode can use many upstream providers, so it cannot report one universal subscription balance.",
+    metrics,
+    accountUrl: "https://console.opencode.ai/",
+    actionLabel: "Open OpenCode Console"
+  };
+}
+function parseOpenCodeStats(output) {
+  const ansiPattern = new RegExp("\\x1b\\[[0-?]*[ -/]*[@-~]", "g");
+  const plain = output.replace(ansiPattern, "");
+  const readNumber = (label) => {
+    const match = plain.match(
+      new RegExp(`${label}\\s+([\\d,]+)\\s*(?:\u2502|$)`, "m")
+    );
+    return match?.[1] ? Number(match[1].replaceAll(",", "")) : 0;
+  };
+  const costMatch = plain.match(/Total Cost\s+(\$[\d,.]+)\s*(?:│|$)/m);
+  return {
+    sessions: readNumber("Sessions"),
+    inputTokens: readNumber("Input"),
+    outputTokens: readNumber("Output"),
+    totalCost: costMatch?.[1]
+  };
+}
+function copilotSnapshotToMetric(id, snapshot) {
+  const entitlement = asFiniteNumber(snapshot.entitlementRequests) ?? 0;
+  const used = asFiniteNumber(snapshot.usedRequests) ?? 0;
+  const hasAllowance = snapshot.isUnlimitedEntitlement || snapshot.hasQuota !== false && entitlement > 0;
+  const remainingPercent = hasAllowance ? clampPercent(snapshot.remainingPercentage ?? 0) : void 0;
+  let value = "Not included";
+  if (snapshot.isUnlimitedEntitlement) {
+    value = "Unlimited";
+  } else if (snapshot.hasQuota !== false && entitlement > 0) {
+    value = `${formatNumber(Math.max(0, entitlement - used))} / ${formatNumber(entitlement)} left`;
+  }
+  return {
+    id,
+    label: formatIdentifier(id),
+    value,
+    remainingPercent,
+    usedPercent: remainingPercent === void 0 ? void 0 : clampPercent(100 - remainingPercent),
+    resetAt: toIsoDate(snapshot.resetDate)
+  };
+}
+function codexWindowToMetric(id, window) {
+  const usedPercent = clampPercent(window.usedPercent ?? 0);
+  const remainingPercent = clampPercent(100 - usedPercent);
+  const duration = window.windowDurationMins;
+  return {
+    id,
+    label: duration ? formatWindowDuration(duration) : formatIdentifier(id),
+    value: `${formatNumber(remainingPercent)}% remaining`,
+    usedPercent,
+    remainingPercent,
+    resetAt: window.resetsAt ? new Date(window.resetsAt * 1e3).toISOString() : void 0
+  };
+}
+function requestCopilotRpc(method, params) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      "copilot",
+      ["--server", "--stdio", "--no-auto-update", "--log-level", "none"],
+      { stdio: ["pipe", "pipe", "pipe"] }
+    );
+    let buffer = Buffer.alloc(0);
+    child.stderr.resume();
+    const timer = createProcessTimeout(child, reject, "Copilot quota request");
+    child.once("error", (error) => finishWithError(error));
+    child.stdout.on("data", (chunk) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      const separator = buffer.indexOf("\r\n\r\n");
+      if (separator < 0) return;
+      const header = buffer.subarray(0, separator).toString("utf8");
+      const length = Number(/Content-Length:\s*(\d+)/i.exec(header)?.[1]);
+      if (!Number.isFinite(length) || buffer.length < separator + 4 + length) {
+        return;
+      }
+      try {
+        const response = JSON.parse(
+          buffer.subarray(separator + 4, separator + 4 + length).toString("utf8")
+        );
+        if (response.error) {
+          finishWithError(new Error("Copilot quota request failed."));
+          return;
+        }
+        clearTimeout(timer);
+        child.kill();
+        resolve(response);
+      } catch (error) {
+        finishWithError(error);
+      }
+    });
+    const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method, params });
+    child.stdin.write(
+      `Content-Length: ${Buffer.byteLength(body)}\r
+\r
+${body}`
+    );
+    function finishWithError(error) {
+      clearTimeout(timer);
+      child.kill();
+      reject(error instanceof Error ? error : new Error(String(error)));
+    }
+  });
+}
+function requestCodexRateLimits() {
+  return new Promise((resolve, reject) => {
+    const child = spawn("codex", ["app-server"], {
+      stdio: ["pipe", "pipe", "pipe"]
+    });
+    let buffer = "";
+    child.stderr.resume();
+    const timer = createProcessTimeout(child, reject, "Codex quota request");
+    child.once("error", (error) => finishWithError(error));
+    child.stdout.on("data", (chunk) => {
+      buffer += chunk.toString("utf8");
+      let newline = buffer.indexOf("\n");
+      while (newline >= 0) {
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
+        if (line) {
+          try {
+            const message = JSON.parse(line);
+            if (message.id === 0) {
+              writeJsonLine(child, { method: "initialized", params: {} });
+              writeJsonLine(child, {
+                method: "account/rateLimits/read",
+                id: 1,
+                params: null
+              });
+            } else if (message.id === 1) {
+              if (message.error) {
+                finishWithError(new Error("Codex quota request failed."));
+                return;
+              }
+              clearTimeout(timer);
+              child.kill();
+              resolve(asObject(message.result) ?? {});
+              return;
+            }
+          } catch (error) {
+            finishWithError(error);
+            return;
+          }
+        }
+        newline = buffer.indexOf("\n");
+      }
+    });
+    writeJsonLine(child, {
+      method: "initialize",
+      id: 0,
+      params: {
+        clientInfo: {
+          name: "coding-agent-orchestrator",
+          title: "Coding Agent Orchestrator",
+          version: "0.1.0"
+        }
+      }
+    });
+    function finishWithError(error) {
+      clearTimeout(timer);
+      child.kill();
+      reject(error instanceof Error ? error : new Error(String(error)));
+    }
+  });
+}
+function writeJsonLine(child, value) {
+  child.stdin.write(`${JSON.stringify(value)}
+`);
+}
+function createProcessTimeout(child, reject, label) {
+  return setTimeout(() => {
+    child.kill();
+    reject(new Error(`${label} timed out.`));
+  }, COMMAND_TIMEOUT_MS);
+}
+async function commandExists(commands) {
+  for (const command of commands) {
+    try {
+      await execFile2("which", [command], { encoding: "utf8", timeout: 2e3 });
+      return true;
+    } catch {
+    }
+  }
+  return false;
+}
+function providerErrorFallback(definition, checkedAt) {
+  const providerId = definition.descriptor.id;
+  const links = {
+    copilot: {
+      url: "https://github.com/settings/billing",
+      label: "Open GitHub billing"
+    },
+    codex: {
+      url: "https://chatgpt.com/codex/settings/usage",
+      label: "Open Codex usage"
+    },
+    opencode: {
+      url: "https://console.opencode.ai/",
+      label: "Open OpenCode Console"
+    }
+  };
+  const link = links[providerId];
+  return {
+    providerId,
+    displayName: definition.descriptor.displayName,
+    installed: true,
+    status: "error",
+    source: link ? "provider-dashboard" : "none",
+    summary: providerId === "opencode" ? "Local OpenCode stats could not be read. Its database may be busy; refresh after active OpenCode processes finish." : `The ${definition.descriptor.displayName} usage interface did not respond. Your coding sessions are unaffected.`,
+    metrics: [],
+    accountUrl: link?.url,
+    actionLabel: link?.label,
+    checkedAt
+  };
+}
+function asObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : void 0;
+}
+function asFiniteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : void 0;
+}
+function clampPercent(value) {
+  return Math.min(100, Math.max(0, Math.round(value * 10) / 10));
+}
+function formatNumber(value) {
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }).format(
+    value
+  );
+}
+function formatIdentifier(value) {
+  return value.replaceAll("_", " ").replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+function formatWindowDuration(minutes) {
+  if (minutes % 10080 === 0) return `${minutes / 10080}-week limit`;
+  if (minutes % 1440 === 0) return `${minutes / 1440}-day limit`;
+  if (minutes % 60 === 0) return `${minutes / 60}-hour limit`;
+  return `${minutes}-minute limit`;
+}
+function toIsoDate(value) {
+  if (typeof value !== "string") return void 0;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? void 0 : date.toISOString();
+}
+function providerMetricOrder(id, preferred) {
+  const index = preferred.indexOf(id);
+  return index < 0 ? preferred.length : index;
+}
+
 // src/scheduler.ts
 import { readFile } from "fs/promises";
 import {
@@ -2704,6 +3326,7 @@ var ORCHESTRATOR_TERMINAL_PAGE_LINE_LIMIT = 2e3;
 var ORCHESTRATOR_STATE_FILENAME = "ORCHESTRATOR.json";
 var ORCHESTRATOR_TERMINAL_LOG_FILENAME = "pane.log";
 var orchestrator = new TmuxOrchestratorService(workspace, defaultProjectPath);
+var providerCredits = new ProviderCreditsService();
 var scheduleService = new OrchestratorScheduleService(
   workspace,
   orchestrator
@@ -2731,6 +3354,15 @@ app.get("/api/orchestrator/agent", async (context) => {
 });
 app.get("/api/orchestrator/capabilities", async (context) => {
   return context.json(await orchestrator.getCapabilities());
+});
+app.get("/api/orchestrator/provider-credits", async (context) => {
+  const forceRefresh = context.req.query("refresh") === "true";
+  const dashboard = providerCreditsDashboardSchema.parse(
+    await providerCredits.getDashboard(
+      forceRefresh
+    )
+  );
+  return context.json(dashboard);
 });
 app.get("/api/orchestrator/master", async (context) => {
   return context.json(await orchestrator.getMasterSession());

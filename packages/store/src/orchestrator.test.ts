@@ -65,6 +65,7 @@ describe("orchestrator session persistence", () => {
     );
     expect(created.model).toBe("claude-sonnet-4.6");
     expect(created.executionMode).toBe("standard");
+    expect(created.reuseProviderSession).toBe(true);
     expect(created.availableCustomAgents).toEqual([]);
     expect(created.premiumUsage).toEqual({
       chargedRequestCount: 0,
