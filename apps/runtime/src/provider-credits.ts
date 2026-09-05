@@ -13,6 +13,12 @@ import {
   ORCHESTRATOR_CLI_PROVIDER_DEFINITIONS,
   type OrchestratorCliProviderDefinition,
 } from "./cli-providers.js";
+import {
+  type CodexRateLimitSnapshot,
+  type CodexRateLimitsResponse,
+  type CodexRateLimitWindow,
+  parseCodexRateLimits,
+} from "./codex-quota.js";
 
 const execFile = promisify(execFileCallback);
 const CACHE_TTL_MS = 60_000;
@@ -29,28 +35,14 @@ interface CopilotQuotaSnapshot {
   hasQuota?: boolean;
 }
 
-interface CodexRateLimitWindow {
-  usedPercent?: number;
-  windowDurationMins?: number | null;
-  resetsAt?: number | null;
-}
-
-interface CodexRateLimitSnapshot {
-  limitId?: string;
-  limitName?: string | null;
-  primary?: CodexRateLimitWindow | null;
-  secondary?: CodexRateLimitWindow | null;
-  credits?: {
-    balance?: string | null;
-    hasCredits?: boolean;
-    unlimited?: boolean;
-  } | null;
-  planType?: string | null;
-}
-
 export class ProviderCreditsService {
   private cached?: { expiresAt: number; value: ProviderCreditsDashboard };
   private inFlight?: Promise<ProviderCreditsDashboard>;
+  private codexRateLimitsCache?: {
+    expiresAt: number;
+    value?: CodexRateLimitSnapshot;
+  };
+  private codexRateLimitsInFlight?: Promise<CodexRateLimitSnapshot | undefined>;
 
   async getDashboard(forceRefresh = false): Promise<ProviderCreditsDashboard> {
     const now = Date.now();
@@ -66,6 +58,30 @@ export class ProviderCreditsService {
     });
     const value = await this.inFlight;
     this.cached = { expiresAt: now + CACHE_TTL_MS, value };
+    return value;
+  }
+
+  /** Read the raw included Codex windows for runtime scheduling decisions. */
+  async getCodexRateLimits(
+    forceRefresh = false
+  ): Promise<CodexRateLimitSnapshot | undefined> {
+    const now = Date.now();
+    if (
+      !forceRefresh &&
+      this.codexRateLimitsCache &&
+      this.codexRateLimitsCache.expiresAt > now
+    ) {
+      return this.codexRateLimitsCache.value;
+    }
+    if (this.codexRateLimitsInFlight) return this.codexRateLimitsInFlight;
+
+    this.codexRateLimitsInFlight = requestCodexRateLimits()
+      .then((result) => parseCodexRateLimits(result))
+      .finally(() => {
+        this.codexRateLimitsInFlight = undefined;
+      });
+    const value = await this.codexRateLimitsInFlight;
+    this.codexRateLimitsCache = { expiresAt: now + CACHE_TTL_MS, value };
     return value;
   }
 
@@ -206,18 +222,7 @@ async function collectCodexCredits(): Promise<
   >
 > {
   const result = await requestCodexRateLimits();
-  const primarySnapshot = asObject(result.rateLimits) as
-    | CodexRateLimitSnapshot
-    | undefined;
-  const byId = asObject(result.rateLimitsByLimitId);
-  const snapshots = primarySnapshot
-    ? [primarySnapshot]
-    : Object.values(byId ?? {}).map((value) => value as CodexRateLimitSnapshot);
-  if (snapshots.length === 0) {
-    throw new Error("Codex returned no rate-limit snapshots.");
-  }
-
-  const snapshot = snapshots[0];
+  const snapshot = parseCodexRateLimits(result as CodexRateLimitsResponse);
   if (!snapshot) {
     throw new Error("Codex returned no rate-limit snapshots.");
   }

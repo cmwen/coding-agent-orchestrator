@@ -143,6 +143,12 @@ const CLI_MODELS: ModelDescriptor[] = [
     supportedReasoningEfforts: [],
   },
   {
+    id: "auto",
+    displayName: "Auto (Codex chooses)",
+    runtimeProvider: "codex",
+    supportedReasoningEfforts: [],
+  },
+  {
     id: "gpt-5.5",
     displayName: "GPT-5.5",
     runtimeProvider: "codex",

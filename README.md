@@ -106,6 +106,25 @@ Provider checks run concurrently only when Credits is opened. Results are
 single-flight cached in the runtime for 60 seconds; **Refresh usage** bypasses
 the cache. A failed provider check never blocks the other cards or coding jobs.
 
+### Codex allowance-aware queueing
+
+Codex usage is read from the local `codex app-server` rate-limit endpoint. The
+dashboard identifies the two included rolling windows (the usual 5-hour and
+7-day/weekly windows), shows each reset time, and reports the next safe prompt
+time when an exhausted window has a reset timestamp.
+
+Before starting a queued Codex job, the runtime checks those windows. If an
+included window is exhausted, the prompt stays persisted in the queue with
+`deferredUntil` and `deferReason`; it is not sent to Codex until the reset. The
+scheduler periodically reconciles sessions, so this also works with no browser
+connected. Queue state and deferral fields survive runtime restarts.
+
+If Codex reports a usage/rate-limit failure after a job starts, the runtime
+clears its completion marker, re-queues it for the reported reset, and resumes
+the saved provider conversation with `codex exec resume <thread>` when it runs
+again. Purchased credits are displayed separately and are not automatically
+spent to bypass an included-window deferral.
+
 ## Local Store
 
 By default, the store is created at:
@@ -155,6 +174,8 @@ sessions and can be disabled in session settings for isolated one-shot tasks.
   while making future jobs start fresh by default.
 - The orchestrator task queue shows the provider session ID used for each job so
   you can verify what context a run is attached to.
+- Codex quota-deferred jobs are labeled as waiting for allowance and show their
+  planned resume time when available.
 
 ## Commands
 

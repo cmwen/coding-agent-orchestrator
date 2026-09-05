@@ -249,6 +249,18 @@ async function writeOrchestratorJobCompletion(workspace, sessionId, jobId, compl
     "utf8"
   );
 }
+async function clearOrchestratorJobCompletion(workspace, sessionId, jobId) {
+  const jobPath = await findOrchestratorJobPath(workspace, sessionId, jobId);
+  if (!jobPath) {
+    throw new Error(
+      `Cannot clear completion for missing job ${jobId} for ${sessionId}`
+    );
+  }
+  await fs.rm(
+    path.join(path.dirname(jobPath), ORCHESTRATOR_JOB_DONE_FILENAME),
+    { force: true }
+  );
+}
 async function listOrchestratorSchedules(workspace, options) {
   const schedulesRoot = orchestratorSchedulesRoot(workspace);
   const scheduleIds = await readDirNames(schedulesRoot);
@@ -944,6 +956,7 @@ export {
   ORCHESTRATOR_TERMINAL_LINE_LIMIT,
   accumulatePremiumUsageTotals,
   buildOrchestratorWindowName,
+  clearOrchestratorJobCompletion,
   compactTimestamp,
   createMasterBatch,
   createOrchestratorJob,

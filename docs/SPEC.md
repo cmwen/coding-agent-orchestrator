@@ -39,6 +39,29 @@ Single local user on a trusted machine or private network.
 10. Browse project folders and preview files from the Files workspace.
 11. Use the desktop command palette to jump to high-frequency workspace actions.
 
+## Codex quota-aware execution
+
+Codex is a special case because `codex app-server` exposes included usage as two
+rolling rate-limit windows: a primary window (normally 5 hours) and a secondary
+window (normally 7 days/weekly). The runtime reads these windows through
+`account/rateLimits/read`; the UI presents their used/remaining percentages and
+reset times. Window duration metadata is used when present, with the primary
+and secondary roles as the compatibility fallback.
+
+For a queued Codex job, the runtime checks the latest available snapshot before
+launching the prompt. If either included window is exhausted and has a future
+reset, the job remains queued and persists `deferredUntil` plus `deferReason`.
+The scheduler reconciles sessions independently of SSE/browser clients, so a
+deferred prompt is eligible again after a runtime restart and after the reset.
+Purchased credits are informational and are not silently spent to avoid this
+included-window wait.
+
+When a started Codex job exits with recognizable usage/rate-limit output, the
+runtime removes its completion marker, records `interruptedAt`, re-queues it,
+and preserves its provider session ID. Once allowance returns, the job uses
+`codex exec resume <thread>` so it continues the same Codex conversation rather
+than creating a new thread.
+
 ## Acceptance Criteria
 
 - The app runs without `min-kb-store`.
@@ -51,3 +74,11 @@ Single local user on a trusted machine or private network.
 - Mobile uses a compact session picker, an active-session Home hub, a Home queue board, and bottom navigation.
 - Delegate, Terminal, Changes, Files, and Schedules remain scoped to the selected session.
 - PWA assets and GET API cache rules exclude SSE streams.
+- Codex 5-hour and weekly windows are read from app-server and shown with reset
+  times in Credits.
+- An exhausted included Codex window defers queued prompts until its reset;
+  deferral metadata is persisted and survives runtime restart.
+- A deferred or rate-limited Codex job resumes the same provider thread after
+  allowance returns, including when the browser is disconnected.
+- Codex purchased-credit balances remain informational and are not consumed by
+  automatic queue recovery.

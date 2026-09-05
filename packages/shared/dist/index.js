@@ -510,6 +510,11 @@ var orchestratorJobSchema = z.object({
   completedAt: z.string().min(1).optional(),
   exitCode: z.number().int().optional(),
   premiumUsage: premiumUsageSchema.optional(),
+  /** Set while a provider quota window is exhausted; the job remains queued. */
+  deferredUntil: z.string().datetime().optional(),
+  deferReason: z.string().min(1).optional(),
+  /** Set when a started provider job is requeued after an interruption. */
+  interruptedAt: z.string().datetime().optional(),
   jobDirectory: z.string().min(1)
 });
 var orchestratorSessionSummarySchema = z.object({

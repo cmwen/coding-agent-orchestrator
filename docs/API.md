@@ -64,3 +64,19 @@ usage statistics, interactive/provider-dashboard fallbacks, unavailable data,
 collector errors, and missing binaries. Metrics may include a display value,
 used/remaining percentages, and an ISO reset time. The default request uses the
 60-second runtime cache; `refresh=true` forces a new concurrent collection.
+
+For Codex, live metrics represent the app-server primary and secondary included
+windows (normally 5-hour and weekly). Their reset timestamps are used by the
+runtime scheduler to calculate when a deferred prompt may be retried. Clients
+should tolerate absent provider-level `nextSafePromptAt` metadata and fall back
+to metric reset times.
+
+Jobs returned by session endpoints may include these optional recovery fields:
+
+- `deferredUntil`: ISO timestamp before which a quota-deferred job must not be launched.
+- `deferReason`: human-readable reason for waiting, typically the exhausted Codex window and reset.
+- `interruptedAt`: ISO timestamp recorded when a started provider process was interrupted and safely re-queued.
+
+These fields are persisted with the job. A re-queued Codex job retains its
+`providerSessionId`; when runnable, the runtime invokes the Codex resume form so
+it continues the same thread.

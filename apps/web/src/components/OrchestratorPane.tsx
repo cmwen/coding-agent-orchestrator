@@ -259,9 +259,11 @@ function buildDelegationCommandHint(
     return `gemini --model ${session.model}${effectiveProviderSessionId ? ` --resume ${effectiveProviderSessionId}` : ""} --approval-mode yolo ${executionModeCommandHint()}`;
   }
   if (cliProvider === "codex") {
+    const modelFlag =
+      session.model === "auto" ? "" : ` --model ${session.model}`;
     return effectiveProviderSessionId
-      ? `codex exec resume --model ${session.model} ${effectiveProviderSessionId} ...`
-      : `codex exec --model ${session.model} ...`;
+      ? `codex exec resume${modelFlag} ${effectiveProviderSessionId} ...`
+      : `codex exec${modelFlag} ...`;
   }
   if (cliProvider === "opencode") {
     return `opencode run --model ${session.model}${effectiveProviderSessionId ? ` --session ${effectiveProviderSessionId}` : ""} ...`;
@@ -369,7 +371,9 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
     props.capabilities?.defaultProjectPath ?? ""
   );
   const [cliProvider, setCliProvider] = useState(defaultCliProvider);
-  const [modelId, setModelId] = useState(props.defaultModelId);
+  const [modelId, setModelId] = useState(
+    defaultCliProvider === "codex" ? "auto" : props.defaultModelId
+  );
   const [projectPurpose, setProjectPurpose] = useState("");
   const [initialPrompt, setInitialPrompt] = useState("");
   const [providerSessionId, setProviderSessionId] = useState("");
@@ -1452,7 +1456,13 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
             <select
               value={cliProvider}
               onChange={(event) => {
-                setCliProvider(event.target.value);
+                const nextCliProvider = event.target.value;
+                setCliProvider(nextCliProvider);
+                if (nextCliProvider === "codex") {
+                  // Codex's auto model follows the currently installed CLI
+                  // catalog and is the safest default for a new session.
+                  setModelId("auto");
+                }
                 setProviderSessionId("");
                 setExecutionMode("standard");
               }}
@@ -2384,12 +2394,22 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                         {items.slice(0, 2).map((item) => (
                           <div
                             key={item.jobId}
-                            className="orchestrator-queue-board-card"
+                            className={`orchestrator-queue-board-card${isQuotaDeferredJob(item) ? " quota-deferred-card" : ""}`}
                           >
+                            {isQuotaDeferredJob(item) ? (
+                              <span className="scope-chip quota-deferred-chip">
+                                Waiting for Codex allowance
+                              </span>
+                            ) : null}
                             <strong>
                               {label}: {item.promptPreview}
                             </strong>
                             <span>{describeJobProgress(item)}</span>
+                            {isQuotaDeferredJob(item) ? (
+                              <span className="quota-deferred-note">
+                                {quotaSessionCopy(item, props.session)}
+                              </span>
+                            ) : null}
                             <div className="orchestrator-queue-board-actions">
                               {item.status === "queued" ? (
                                 <button
@@ -2450,13 +2470,18 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                   {visibleJobs.map((job) => (
                     <article
                       key={job.jobId}
-                      className={`orchestrator-job-item orchestrator-job-item-${job.status}`}
+                      className={`orchestrator-job-item orchestrator-job-item-${job.status}${isQuotaDeferredJob(job) ? " orchestrator-job-item-quota-deferred" : ""}`}
                     >
                       <div className="orchestrator-job-row">
                         <div className="orchestrator-job-title">
                           <span className="scope-chip">
                             {humanizeJobStatus(job.status)}
                           </span>
+                          {isQuotaDeferredJob(job) ? (
+                            <span className="scope-chip quota-deferred-chip">
+                              Waiting for quota
+                            </span>
+                          ) : null}
                           <strong>{job.promptPreview}</strong>
                           {job.masterBatchId ? (
                             <span
@@ -2487,6 +2512,11 @@ export function OrchestratorPane(props: OrchestratorPaneProps) {
                       <div className="orchestrator-job-row">
                         <span className="panel-caption">
                           {describeJobProgress(job)}
+                          {isQuotaDeferredJob(job) ? (
+                            <span className="quota-deferred-note">
+                              {quotaSessionCopy(job, props.session)}
+                            </span>
+                          ) : null}
                         </span>
                         <span className="orchestrator-job-actions">
                           <span className="panel-caption">
@@ -3278,10 +3308,21 @@ function humanizeJobStatus(status: OrchestratorJob["status"]): string {
       return "Completed";
     case "failed":
       return "Failed";
+    default:
+      return String(status)
+        .replaceAll("-", " ")
+        .replace(/\b\w/g, (character) => character.toUpperCase());
   }
 }
 
 function describeJobProgress(job: OrchestratorJob): string {
+  const quota = getQuotaDeferral(job);
+  if (quota) {
+    const when = quota.resumeAt
+      ? ` until ${formatTimestamp(quota.resumeAt)}`
+      : " until the next Codex window";
+    return `${quota.reason ?? "Codex usage limit reached"}. Waiting${when}.`;
+  }
   switch (job.status) {
     case "queued":
       return `Queued ${formatTimestamp(job.submittedAt)}`;
@@ -3291,6 +3332,8 @@ function describeJobProgress(job: OrchestratorJob): string {
       return `Finished ${formatTimestamp(job.completedAt ?? job.submittedAt)}`;
     case "failed":
       return `Failed ${formatTimestamp(job.completedAt ?? job.submittedAt)}`;
+    default:
+      return `Status updated ${formatTimestamp(job.completedAt ?? job.submittedAt)}`;
   }
 }
 
@@ -3305,6 +3348,12 @@ function describeSchedule(schedule: OrchestratorSchedule): string {
 }
 
 function formatJobTimestamp(job: OrchestratorJob): string {
+  const quota = getQuotaDeferral(job);
+  if (quota) {
+    return quota.resumeAt
+      ? `Safe to resume ${formatTimestamp(quota.resumeAt)}`
+      : "Waiting for Codex allowance";
+  }
   switch (job.status) {
     case "queued":
       return `Submitted ${formatTimestamp(job.submittedAt)}`;
@@ -3314,7 +3363,75 @@ function formatJobTimestamp(job: OrchestratorJob): string {
       return `Completed ${formatTimestamp(job.completedAt ?? job.submittedAt)}`;
     case "failed":
       return `Failed ${formatTimestamp(job.completedAt ?? job.submittedAt)}`;
+    default:
+      return formatTimestamp(job.completedAt ?? job.submittedAt);
   }
+}
+
+type QuotaDeferral = {
+  reason?: string;
+  resumeAt?: string;
+};
+
+function getQuotaDeferral(job: OrchestratorJob): QuotaDeferral | undefined {
+  const value = job as unknown as Record<string, unknown>;
+  const status = String(value.status ?? "").toLowerCase();
+  const quota =
+    value.quotaDeferred === true ||
+    value.usageDeferred === true ||
+    value.rateLimited === true ||
+    typeof value.deferredUntil === "string" ||
+    typeof value.deferReason === "string" ||
+    status === "deferred" ||
+    status === "quota-deferred" ||
+    status === "quota-waiting" ||
+    status === "rate-limited";
+  if (!quota) return undefined;
+  const reasonKeys = [
+    "quotaDeferredReason",
+    "deferReason",
+    "waitingReason",
+    "rateLimitReason",
+  ];
+  const timeKeys = [
+    "quotaResumeAt",
+    "resumeAt",
+    "deferredUntil",
+    "nextSafePromptAt",
+    "nextAvailableAt",
+    "retryAt",
+  ];
+  const reason = reasonKeys
+    .map((key) => value[key])
+    .find(
+      (candidate): candidate is string =>
+        typeof candidate === "string" && candidate.trim().length > 0
+    );
+  const resumeAt = timeKeys
+    .map((key) => value[key])
+    .find((candidate): candidate is string => {
+      if (typeof candidate !== "string" || !candidate.trim()) return false;
+      return !Number.isNaN(new Date(candidate).getTime());
+    });
+  return { reason, resumeAt };
+}
+
+function isQuotaDeferredJob(job: OrchestratorJob): boolean {
+  return getQuotaDeferral(job) !== undefined;
+}
+
+function quotaSessionCopy(
+  job: OrchestratorJob,
+  session?: OrchestratorSession
+): string {
+  const value = job as unknown as Record<string, unknown>;
+  const canResumeSameSession =
+    Boolean(job.providerSessionId) ||
+    typeof value.interruptedAt === "string" ||
+    Boolean(session?.providerSessionId);
+  return canResumeSameSession
+    ? "Resumes the same Codex session automatically when allowance returns."
+    : "Starts, or resumes the saved Codex session, when allowance returns.";
 }
 
 function formatTimestamp(timestamp: string): string {

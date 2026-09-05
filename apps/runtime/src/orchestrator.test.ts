@@ -19,6 +19,7 @@ import { resolveWorkspace } from "@coding-agent-orchestrator/store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const storeMocks = vi.hoisted(() => ({
+  clearOrchestratorJobCompletion: vi.fn(),
   createOrchestratorJob: vi.fn(),
   deleteOrchestratorJob: vi.fn(),
   deleteOrchestratorSession: vi.fn(),
@@ -35,6 +36,7 @@ vi.mock("@coding-agent-orchestrator/store", async () => {
   >("@coding-agent-orchestrator/store");
   return {
     ...actual,
+    clearOrchestratorJobCompletion: storeMocks.clearOrchestratorJobCompletion,
     createOrchestratorJob: storeMocks.createOrchestratorJob,
     deleteOrchestratorJob: storeMocks.deleteOrchestratorJob,
     deleteOrchestratorSession: storeMocks.deleteOrchestratorSession,
@@ -1190,6 +1192,31 @@ describe("provider continuation commands", () => {
     ).toContain("codex exec resume --model 'gpt-5.4'");
   });
 
+  it("lets Codex 0.153.4 choose its bundled model with auto", () => {
+    const fresh = buildCodexCommand({
+      model: "auto",
+      prompt: "Start the migration",
+      promptMode: "inline",
+      projectPurpose: "Ship the migration",
+    });
+    const resumed = buildCodexCommand({
+      model: "auto",
+      prompt: "Continue the migration",
+      promptMode: "inline",
+      projectPurpose: "Ship the migration",
+      providerSessionId: "codex-session-123",
+    });
+
+    expect(fresh).toContain(
+      "codex exec --dangerously-bypass-approvals-and-sandbox --json"
+    );
+    expect(resumed).toContain(
+      "codex exec resume --dangerously-bypass-approvals-and-sandbox"
+    );
+    expect(fresh).not.toContain("--model");
+    expect(resumed).not.toContain("--model");
+  });
+
   it("uses OpenCode JSON discovery and exact session continuation", () => {
     expect(
       buildOpencodeCommand({
@@ -1227,6 +1254,265 @@ describe("provider continuation commands", () => {
         "Resume later with: agy --conversation conversation-123"
       )
     ).toBe("conversation-123");
+  });
+});
+
+describe("Codex quota recovery", () => {
+  const codexSession = {
+    sessionId: "session-1",
+    cliProvider: "codex",
+  } as OrchestratorSession;
+
+  it("persists a reset-aware deferral for an exhausted included window", async () => {
+    const job = {
+      jobId: "job-1",
+      sessionId: "session-1",
+      status: "queued",
+      promptPreview: "Continue the migration",
+      promptMode: "inline",
+      submittedAt: "2026-03-20T12:00:00Z",
+      jobDirectory: "/tmp/job-1",
+    } as OrchestratorJob;
+    const resetAt = new Date(Date.now() + 60_000).toISOString();
+    storeMocks.updateOrchestratorJob.mockResolvedValue({
+      ...job,
+      deferredUntil: resetAt,
+      deferReason: "Codex primary included usage is exhausted.",
+    });
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp" } as never,
+      "/tmp",
+      undefined,
+      undefined,
+      vi.fn().mockResolvedValue({
+        primary: { usedPercent: 100, resetsAt: Date.parse(resetAt) / 1_000 },
+      })
+    );
+    const defer = (
+      service as unknown as {
+        deferCodexJobIfNeeded: (
+          session: OrchestratorSession,
+          job: OrchestratorJob
+        ) => Promise<OrchestratorJob | undefined>;
+      }
+    ).deferCodexJobIfNeeded.bind(service);
+
+    const deferred = await defer(codexSession, job);
+
+    expect(deferred?.deferredUntil).toBe(resetAt);
+    expect(storeMocks.updateOrchestratorJob).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1",
+      "job-1",
+      expect.objectContaining({ deferredUntil: resetAt })
+    );
+  });
+
+  it("requeues a limit-failed job immediately after the account reset", async () => {
+    const jobDirectory = await createTempJobDirectory();
+    const outputPath = path.join(jobDirectory, "output.log");
+    await writeFile(outputPath, "Usage limit reached\n", "utf8");
+    const job = {
+      jobId: "job-1",
+      sessionId: "session-1",
+      status: "failed",
+      promptPreview: "Continue the migration",
+      promptMode: "inline",
+      submittedAt: "2026-03-20T12:00:00Z",
+      outputPath,
+      jobDirectory,
+    } as OrchestratorJob;
+    storeMocks.updateOrchestratorJob.mockResolvedValue({
+      ...job,
+      status: "queued",
+      completedAt: undefined,
+      exitCode: undefined,
+      interruptedAt: new Date().toISOString(),
+    });
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp" } as never,
+      "/tmp",
+      undefined,
+      undefined,
+      vi.fn().mockResolvedValue({
+        primary: { usedPercent: 10, resetsAt: null },
+      })
+    );
+    const requeue = (
+      service as unknown as {
+        requeueCodexRateLimitedJob: (
+          session: OrchestratorSession,
+          job: OrchestratorJob
+        ) => Promise<OrchestratorJob | undefined>;
+      }
+    ).requeueCodexRateLimitedJob.bind(service);
+
+    const queued = await requeue(codexSession, job);
+
+    expect(queued?.status).toBe("queued");
+    expect(queued?.deferredUntil).toBeUndefined();
+    expect(storeMocks.clearOrchestratorJobCompletion).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1",
+      "job-1"
+    );
+  });
+
+  it("keeps known deferred work waiting when the quota reader is unavailable", async () => {
+    const job = {
+      jobId: "job-1",
+      sessionId: "session-1",
+      status: "queued",
+      promptPreview: "Continue the migration",
+      promptMode: "inline",
+      submittedAt: "2026-03-20T12:00:00Z",
+      deferredUntil: new Date(Date.now() - 1_000).toISOString(),
+      interruptedAt: new Date(Date.now() - 2_000).toISOString(),
+      jobDirectory: "/tmp/job-1",
+    } as OrchestratorJob;
+    storeMocks.updateOrchestratorJob.mockImplementation(
+      async (_workspace, _sessionId, _jobId, updates) => ({
+        ...job,
+        ...updates,
+      })
+    );
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp" } as never,
+      "/tmp",
+      undefined,
+      undefined,
+      vi.fn().mockRejectedValue(new Error("app-server unavailable"))
+    );
+    const defer = (
+      service as unknown as {
+        deferCodexJobIfNeeded: (
+          session: OrchestratorSession,
+          job: OrchestratorJob
+        ) => Promise<OrchestratorJob | undefined>;
+      }
+    ).deferCodexJobIfNeeded.bind(service);
+
+    const deferred = await defer(codexSession, job);
+
+    expect(deferred?.deferredUntil).toBeDefined();
+    expect(Date.parse(deferred?.deferredUntil ?? "")).toBeGreaterThan(
+      Date.now()
+    );
+  });
+
+  it("keeps brand-new jobs fail-open when no quota evidence exists", async () => {
+    const job = {
+      jobId: "job-1",
+      sessionId: "session-1",
+      status: "queued",
+      promptPreview: "Start the migration",
+      promptMode: "inline",
+      submittedAt: "2026-03-20T12:00:00Z",
+      jobDirectory: "/tmp/job-1",
+    } as OrchestratorJob;
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp" } as never,
+      "/tmp",
+      undefined,
+      undefined,
+      vi.fn().mockRejectedValue(new Error("app-server unavailable"))
+    );
+    const defer = (
+      service as unknown as {
+        deferCodexJobIfNeeded: (
+          session: OrchestratorSession,
+          job: OrchestratorJob
+        ) => Promise<OrchestratorJob | undefined>;
+      }
+    ).deferCodexJobIfNeeded.bind(service);
+
+    await expect(defer(codexSession, job)).resolves.toBeUndefined();
+    expect(storeMocks.updateOrchestratorJob).not.toHaveBeenCalled();
+  });
+
+  it("keeps a failed quota job deferred when app-server recovery reads fail", async () => {
+    const job = {
+      jobId: "job-1",
+      sessionId: "session-1",
+      status: "failed",
+      promptPreview: "Continue the migration",
+      promptMode: "inline",
+      submittedAt: "2026-03-20T12:00:00Z",
+      jobDirectory: "/tmp/job-1",
+    } as OrchestratorJob;
+    storeMocks.updateOrchestratorJob.mockImplementation(
+      async (_workspace, _sessionId, _jobId, updates) => ({
+        ...job,
+        ...updates,
+      })
+    );
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp" } as never,
+      "/tmp",
+      undefined,
+      undefined,
+      vi.fn().mockRejectedValue(new Error("app-server unavailable"))
+    );
+    const requeue = (
+      service as unknown as {
+        requeueCodexRateLimitedJob: (
+          session: OrchestratorSession,
+          job: OrchestratorJob
+        ) => Promise<OrchestratorJob | undefined>;
+      }
+    ).requeueCodexRateLimitedJob.bind(service);
+
+    const queued = await requeue(codexSession, job);
+
+    expect(queued?.status).toBe("queued");
+    expect(Date.parse(queued?.deferredUntil ?? "")).toBeGreaterThan(Date.now());
+  });
+});
+
+describe("TmuxOrchestratorService reconciliation locking", () => {
+  it("serializes concurrent reconciliations and reloads after the first finishes", async () => {
+    const session = {
+      sessionId: "session-1",
+    } as OrchestratorSession;
+    let releaseFirst!: () => void;
+    const firstFinished = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const internal = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        await firstFinished;
+        return session;
+      })
+      .mockResolvedValueOnce(session);
+    const service = new TmuxOrchestratorService(
+      { agentsRoot: "/tmp" } as never,
+      "/tmp"
+    );
+    Object.assign(service as object, { reconcileSessionInternal: internal });
+    storeMocks.getOrchestratorSession.mockResolvedValue(session);
+    const reconcile = (
+      service as unknown as {
+        reconcileSession: (
+          value: OrchestratorSession
+        ) => Promise<OrchestratorSession>;
+      }
+    ).reconcileSession.bind(service);
+
+    const first = reconcile(session);
+    await Promise.resolve();
+    const second = reconcile(session);
+    await Promise.resolve();
+    expect(internal).toHaveBeenCalledTimes(1);
+
+    releaseFirst();
+    await Promise.all([first, second]);
+
+    expect(internal).toHaveBeenCalledTimes(2);
+    expect(storeMocks.getOrchestratorSession).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1"
+    );
   });
 });
 

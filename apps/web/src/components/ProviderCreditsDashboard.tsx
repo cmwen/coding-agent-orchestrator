@@ -117,9 +117,11 @@ export function ProviderCreditsDashboard(props: ProviderCreditsDashboardProps) {
 
 function ProviderCreditCard(props: { provider: ProviderCreditStatus }) {
   const { provider } = props;
+  const isCodex = provider.providerId === "codex";
+  const nextSafePromptAt = isCodex ? getNextSafePromptAt(provider) : undefined;
   return (
     <article
-      className={`provider-credit-card provider-credit-card-${provider.status}`}
+      className={`provider-credit-card provider-credit-card-${provider.status}${isCodex ? " provider-credit-card-codex" : ""}`}
     >
       <header className="provider-credit-card-header">
         <div>
@@ -134,6 +136,13 @@ function ProviderCreditCard(props: { provider: ProviderCreditStatus }) {
       </header>
 
       <p className="provider-credit-summary">{provider.summary}</p>
+
+      {isCodex && provider.status === "live" && provider.metrics.length > 0 ? (
+        <CodexQuotaOverview
+          provider={provider}
+          nextSafePromptAt={nextSafePromptAt}
+        />
+      ) : null}
 
       {provider.metrics.length > 0 ? (
         <div className="provider-credit-metrics">
@@ -157,8 +166,52 @@ function ProviderCreditCard(props: { provider: ProviderCreditStatus }) {
   );
 }
 
+/**
+ * Codex exposes two rolling windows (normally five hours and seven days).
+ * Keep this presentation tolerant of older runtimes and newer quota payloads:
+ * the currently shipped metric shape is enough to render the windows, while
+ * optional nextSafePromptAt/nextAvailableAt fields can provide a more precise
+ * answer when the runtime has rate-limit scheduling enabled.
+ */
+function CodexQuotaOverview(props: {
+  provider: ProviderCreditStatus;
+  nextSafePromptAt?: string;
+}) {
+  const exhausted = props.provider.metrics.some(isMetricExhausted);
+  const nextSafePromptAt = props.nextSafePromptAt;
+  return (
+    <div className="codex-quota-overview" data-testid="codex-quota-overview">
+      <div className="codex-quota-overview-heading">
+        <span className="eyebrow">Codex prompt windows</span>
+        <span
+          className={
+            exhausted ? "codex-quota-state is-waiting" : "codex-quota-state"
+          }
+        >
+          {exhausted ? "Waiting for allowance" : "Safe to prompt"}
+        </span>
+      </div>
+      <p className="codex-quota-overview-copy">
+        Prompts use both the rolling 5-hour and weekly allowance. A deferred
+        prompt starts, or resumes its saved Codex session, when the next window
+        opens.
+      </p>
+      {nextSafePromptAt ? (
+        <div className="codex-next-safe-prompt" role="status">
+          <strong>Next safe prompt</strong>
+          <time dateTime={nextSafePromptAt}>
+            {formatResetTime(nextSafePromptAt)}
+          </time>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ProviderCreditMetricRow(props: { metric: ProviderCreditMetric }) {
   const { metric } = props;
+  const codexWindow = metric.id === "primary" || metric.id === "secondary";
+  const label = codexWindow ? codexWindowLabel(metric) : metric.label;
   const remaining = metric.remainingPercent;
   const tone =
     remaining === undefined
@@ -171,7 +224,7 @@ function ProviderCreditMetricRow(props: { metric: ProviderCreditMetric }) {
   return (
     <div className="provider-credit-metric">
       <div className="provider-credit-metric-heading">
-        <span>{metric.label}</span>
+        <span>{label}</span>
         <strong>{metric.value}</strong>
       </div>
       {remaining !== undefined ? (
@@ -188,7 +241,11 @@ function ProviderCreditMetricRow(props: { metric: ProviderCreditMetric }) {
       ) : null}
       {metric.resetAt || metric.detail ? (
         <div className="provider-credit-metric-detail">
-          {metric.resetAt ? `Resets ${formatResetTime(metric.resetAt)}` : null}
+          {metric.resetAt ? (
+            <time dateTime={metric.resetAt}>
+              Resets {formatResetTime(metric.resetAt)}
+            </time>
+          ) : null}
           {metric.resetAt && metric.detail ? " · " : null}
           {metric.detail}
         </div>
@@ -217,11 +274,94 @@ function statusLabel(provider: ProviderCreditStatus): string {
 function formatResetTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat(undefined, {
-    weekday: "short",
+  const exact = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
     hour: "numeric",
     minute: "2-digit",
   }).format(date);
+  const relative = formatRelativeDuration(date.getTime() - Date.now());
+  return `${exact} (${relative})`;
+}
+
+function formatRelativeDuration(deltaMs: number): string {
+  if (deltaMs < 0) return "reset due";
+  if (deltaMs <= 30_000) return "now";
+  const totalMinutes = Math.max(1, Math.round(deltaMs / 60_000));
+  if (totalMinutes < 60) return `in ${totalMinutes}m`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours < 24) return minutes ? `in ${hours}h ${minutes}m` : `in ${hours}h`;
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  return remainingHours ? `in ${days}d ${remainingHours}h` : `in ${days}d`;
+}
+
+type UnknownRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): UnknownRecord | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as UnknownRecord)
+    : undefined;
+}
+
+function readString(
+  record: UnknownRecord | undefined,
+  keys: string[]
+): string | undefined {
+  for (const key of keys) {
+    const value = record?.[key];
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return undefined;
+}
+
+function getNextSafePromptAt(
+  provider: ProviderCreditStatus
+): string | undefined {
+  const record = provider as unknown as UnknownRecord;
+  const quota = asRecord(record.quota) ?? asRecord(record.codexQuota) ?? record;
+  const direct = readString(quota, [
+    "nextSafePromptAt",
+    "nextSafePromptTime",
+    "nextAvailableAt",
+    "safeToPromptAt",
+    "resumeAt",
+  ]);
+  if (direct && Date.parse(direct) > Date.now()) {
+    return direct;
+  }
+
+  // If the runtime has not added a provider-level next-safe timestamp yet,
+  // use the latest reset among exhausted windows as the conservative fallback.
+  const exhaustedResets = provider.metrics
+    .filter((metric) => isMetricExhausted(metric) && metric.resetAt)
+    .map((metric) => metric.resetAt as string)
+    .filter((value) => !Number.isNaN(new Date(value).getTime()))
+    .sort((left, right) => Date.parse(right) - Date.parse(left));
+  return exhaustedResets[0];
+}
+
+function isMetricExhausted(metric: ProviderCreditMetric): boolean {
+  if (metric.remainingPercent !== 0) return false;
+  if (!metric.resetAt) return true;
+  const resetAt = Date.parse(metric.resetAt);
+  return Number.isFinite(resetAt) && resetAt > Date.now();
+}
+
+function codexWindowLabel(metric: ProviderCreditMetric): string {
+  const record = metric as unknown as UnknownRecord;
+  const minutes = ["windowDurationMins", "windowMinutes", "durationMinutes"]
+    .map((key) => record[key])
+    .find((value): value is number => typeof value === "number" && value > 0);
+  if (minutes === 300) return "5-hour window";
+  if (minutes === 10_080) return "Weekly window";
+  const normalized = metric.label.toLowerCase();
+  if (/weekly|7\s*day|week/.test(normalized)) return "Weekly window";
+  if (/5\s*hour|5\s*h|300\s*min/.test(normalized)) return "5-hour window";
+  if (metric.id === "primary") return "5-hour window";
+  if (metric.id === "secondary") return "Weekly window";
+  return metric.label;
 }
 
 function formatRelativeTime(value: string): string {

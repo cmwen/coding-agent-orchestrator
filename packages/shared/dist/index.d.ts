@@ -1319,6 +1319,9 @@ declare const orchestratorJobSchema: z.ZodObject<{
         billingMultiplier: z.ZodOptional<z.ZodNumber>;
         recordedAt: z.ZodString;
     }, z.core.$strip>>;
+    deferredUntil: z.ZodOptional<z.ZodString>;
+    deferReason: z.ZodOptional<z.ZodString>;
+    interruptedAt: z.ZodOptional<z.ZodString>;
     jobDirectory: z.ZodString;
 }, z.core.$strip>;
 type OrchestratorJob = z.infer<typeof orchestratorJobSchema>;
@@ -1470,6 +1473,9 @@ declare const orchestratorSessionSchema: z.ZodObject<{
             billingMultiplier: z.ZodOptional<z.ZodNumber>;
             recordedAt: z.ZodString;
         }, z.core.$strip>>;
+        deferredUntil: z.ZodOptional<z.ZodString>;
+        deferReason: z.ZodOptional<z.ZodString>;
+        interruptedAt: z.ZodOptional<z.ZodString>;
         jobDirectory: z.ZodString;
     }, z.core.$strip>>;
     terminalTail: z.ZodString;

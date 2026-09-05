@@ -114,6 +114,7 @@ import {
 import {
   accumulatePremiumUsageTotals,
   buildOrchestratorWindowName,
+  clearOrchestratorJobCompletion,
   createMasterBatch,
   createOrchestratorJob,
   createOrchestratorSchedule,
@@ -258,6 +259,51 @@ function providerSupportsSessionResume(providerId) {
 function providerSupportsSessionBootstrap(providerId) {
   return Boolean(
     findCliProviderDefinition(providerId)?.supportsProviderSessionBootstrap
+  );
+}
+
+// src/codex-quota.ts
+var CODEX_QUOTA_POLL_INTERVAL_MS = 6e4;
+function codexQuotaRetryAt(exhaustion, nowMs = Date.now()) {
+  if (!exhaustion.exhausted) return void 0;
+  return exhaustion.resetAt ?? new Date(nowMs + CODEX_QUOTA_POLL_INTERVAL_MS).toISOString();
+}
+function asObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : void 0;
+}
+function parseCodexRateLimits(result) {
+  if (!result) return void 0;
+  const direct = asObject(result.rateLimits);
+  if (direct) return direct;
+  const byId = asObject(result.rateLimitsByLimitId);
+  const first = byId ? Object.values(byId)[0] : void 0;
+  return asObject(first);
+}
+function getCodexQuotaExhaustion(snapshot, nowMs = Date.now()) {
+  if (!snapshot) return { exhausted: false };
+  const exhausted = ["primary", "secondary"].map((window) => ({
+    window,
+    value: snapshot[window]
+  })).filter(
+    (entry) => !!entry.value && typeof entry.value.usedPercent === "number" && Number.isFinite(entry.value.usedPercent) && entry.value.usedPercent >= 100
+  ).map((entry) => ({
+    ...entry,
+    resetMs: typeof entry.value.resetsAt === "number" && Number.isFinite(entry.value.resetsAt) ? entry.value.resetsAt * 1e3 : void 0
+  })).filter((entry) => entry.resetMs === void 0 || entry.resetMs > nowMs).sort(
+    (left, right) => (right.resetMs ?? Number.POSITIVE_INFINITY) - (left.resetMs ?? Number.POSITIVE_INFINITY)
+  );
+  const first = exhausted[0];
+  if (!first) return { exhausted: false };
+  return {
+    exhausted: true,
+    window: first.window,
+    resetAt: first.resetMs === void 0 ? void 0 : new Date(first.resetMs).toISOString(),
+    reason: `Codex ${first.window} included usage is exhausted${first.resetMs === void 0 ? "" : ` until ${new Date(first.resetMs).toISOString()}`}.`
+  };
+}
+function isCodexUsageLimitOutput(output) {
+  return /(?:usage|rate)[ -]?limit|too many requests|429|quota|allowance|weekly limit|5[ -]?hour/i.test(
+    output
   );
 }
 
@@ -509,17 +555,20 @@ function resolveQueuedJobProviderSession(input) {
   };
 }
 var TmuxOrchestratorService = class {
-  constructor(workspace2, defaultProjectPath2, tmuxSessionName = DEFAULT_TMUX_SESSION_NAME, resolveModelDescriptor) {
+  constructor(workspace2, defaultProjectPath2, tmuxSessionName = DEFAULT_TMUX_SESSION_NAME, resolveModelDescriptor, readCodexRateLimits) {
     this.workspace = workspace2;
     this.defaultProjectPath = defaultProjectPath2;
     this.tmuxSessionName = tmuxSessionName;
     this.resolveModelDescriptor = resolveModelDescriptor;
+    this.readCodexRateLimits = readCodexRateLimits;
   }
   workspace;
   defaultProjectPath;
   tmuxSessionName;
   resolveModelDescriptor;
+  readCodexRateLimits;
   cliInstallationCache;
+  reconciliationLocks = /* @__PURE__ */ new Map();
   async getCapabilities() {
     const smtp = readRuntimeSmtpEnv();
     const [tmuxInstalled, installedProviderIds, sessions] = await Promise.all([
@@ -604,6 +653,23 @@ var TmuxOrchestratorService = class {
     const session = await getOrchestratorSession(this.workspace, sessionId);
     const reconciled = await this.reconcileSession(session);
     return getOrchestratorSession(this.workspace, reconciled.sessionId);
+  }
+  /**
+   * Called by the runtime scheduler so a deferred Codex job can resume even
+   * when no browser is connected to its terminal stream.
+   */
+  async reconcileDeferredJobs() {
+    const sessions = await listOrchestratorSessions(this.workspace);
+    await Promise.all(
+      sessions.filter((session) => session.cliProvider === "codex").map(
+        (session) => this.getSession(session.sessionId).catch((error) => {
+          console.error(
+            `Failed to reconcile Codex session ${session.sessionId}`,
+            error
+          );
+        })
+      )
+    );
   }
   async getMasterSession() {
     const session = await findMasterSession(this.workspace);
@@ -1151,11 +1217,56 @@ var TmuxOrchestratorService = class {
     }
   }
   async reconcileSession(session) {
-    const syncedSession = await this.syncDiscoveredProviderSessionIds(session);
+    const previous = this.reconciliationLocks.get(session.sessionId);
+    let release;
+    const current = new Promise((resolve) => {
+      release = resolve;
+    });
+    this.reconciliationLocks.set(session.sessionId, current);
+    try {
+      await previous?.catch(() => void 0);
+      const latest = previous ? await getOrchestratorSession(this.workspace, session.sessionId) : session;
+      return await this.reconcileSessionInternal(latest);
+    } finally {
+      release();
+      if (this.reconciliationLocks.get(session.sessionId) === current) {
+        this.reconciliationLocks.delete(session.sessionId);
+      }
+    }
+  }
+  async reconcileSessionInternal(session) {
+    let syncedSession = await this.syncDiscoveredProviderSessionIds(session);
+    if (syncedSession.cliProvider === "codex") {
+      const rateLimitedJob = await this.findRateLimitedJob(syncedSession.jobs);
+      if (rateLimitedJob) {
+        const requeued = await this.requeueCodexRateLimitedJob(
+          syncedSession,
+          rateLimitedJob
+        );
+        if (requeued) {
+          syncedSession = {
+            ...syncedSession,
+            jobs: syncedSession.jobs.map(
+              (job) => job.jobId === requeued.jobId ? requeued : job
+            )
+          };
+        }
+      }
+    }
     const paneExists = await this.tmuxPaneExists(session.tmuxPaneId);
     if (paneExists) {
       let queuedJob = getNextQueuedJob(syncedSession.jobs);
       if (!syncedSession.jobs.some((job) => job.status === "running") && queuedJob) {
+        const quotaJob = await this.deferCodexJobIfNeeded(
+          syncedSession,
+          queuedJob
+        );
+        if (quotaJob) {
+          queuedJob = quotaJob;
+        }
+        if (queuedJob.deferredUntil && Date.parse(queuedJob.deferredUntil) > Date.now()) {
+          return getOrchestratorSession(this.workspace, session.sessionId);
+        }
         const lateBoundProviderSessionId = shouldReuseProviderSession(syncedSession) && supportsProviderSessionResume(syncedSession.cliProvider) && !queuedJob.providerSessionId ? syncedSession.providerSessionId : void 0;
         if (lateBoundProviderSessionId) {
           await updateOrchestratorJob(
@@ -1170,6 +1281,13 @@ var TmuxOrchestratorService = class {
             await this.resolveRetryPrompt(queuedJob),
             true
           );
+        } else if (queuedJob.providerSessionId) {
+          queuedJob = await this.prepareJobArtifacts(
+            syncedSession,
+            queuedJob,
+            await this.resolveRetryPrompt(queuedJob),
+            true
+          );
         }
         await this.startPreparedJob(syncedSession, queuedJob);
         return getOrchestratorSession(this.workspace, session.sessionId);
@@ -1181,6 +1299,95 @@ var TmuxOrchestratorService = class {
       await updateOrchestratorSession(this.workspace, session.sessionId, next);
     }
     return statusChanged ? getOrchestratorSession(this.workspace, session.sessionId) : syncedSession;
+  }
+  async findRateLimitedJob(jobs) {
+    for (const job of jobs) {
+      if (job.status !== "failed" || !job.outputPath) continue;
+      const output = await fs2.readFile(job.outputPath, "utf8").catch((error) => {
+        if (error.code === "ENOENT") return "";
+        throw error;
+      });
+      if (isCodexUsageLimitOutput(output)) return job;
+    }
+    return void 0;
+  }
+  async deferCodexJobIfNeeded(session, job) {
+    if (session.cliProvider !== "codex" || !this.readCodexRateLimits) {
+      return void 0;
+    }
+    if (job.deferredUntil && Date.parse(job.deferredUntil) > Date.now()) {
+      return job;
+    }
+    let snapshot;
+    try {
+      snapshot = await this.readCodexRateLimits();
+    } catch {
+      return this.deferCodexJobWhileQuotaUnknown(session, job);
+    }
+    if (!snapshot) {
+      return this.deferCodexJobWhileQuotaUnknown(session, job);
+    }
+    const exhaustion = getCodexQuotaExhaustion(snapshot);
+    const retryAt = codexQuotaRetryAt(exhaustion);
+    if (retryAt) {
+      return updateOrchestratorJob(
+        this.workspace,
+        session.sessionId,
+        job.jobId,
+        {
+          deferredUntil: retryAt,
+          deferReason: exhaustion.reason
+        }
+      );
+    }
+    if (job.deferredUntil || job.deferReason) {
+      return updateOrchestratorJob(
+        this.workspace,
+        session.sessionId,
+        job.jobId,
+        {
+          deferredUntil: void 0,
+          deferReason: void 0
+        }
+      );
+    }
+    return job;
+  }
+  async deferCodexJobWhileQuotaUnknown(session, job) {
+    if (!job.deferredUntil && !job.interruptedAt) return void 0;
+    const deferredUntil = codexQuotaRetryAt({ exhausted: true });
+    return updateOrchestratorJob(this.workspace, session.sessionId, job.jobId, {
+      deferredUntil,
+      deferReason: "Codex quota status is temporarily unavailable; retrying the allowance check."
+    });
+  }
+  async requeueCodexRateLimitedJob(session, job) {
+    if (!this.readCodexRateLimits) return void 0;
+    let exhaustion;
+    try {
+      const snapshot = await this.readCodexRateLimits(true);
+      if (!snapshot) throw new Error("Codex quota status unavailable.");
+      exhaustion = getCodexQuotaExhaustion(snapshot);
+    } catch {
+      exhaustion = {
+        exhausted: true,
+        reason: "Codex quota status is temporarily unavailable; retrying the allowance check."
+      };
+    }
+    const retryAt = codexQuotaRetryAt(exhaustion);
+    await clearOrchestratorJobCompletion(
+      this.workspace,
+      session.sessionId,
+      job.jobId
+    );
+    return updateOrchestratorJob(this.workspace, session.sessionId, job.jobId, {
+      status: "queued",
+      completedAt: void 0,
+      exitCode: void 0,
+      deferredUntil: retryAt,
+      deferReason: exhaustion.reason,
+      interruptedAt: (/* @__PURE__ */ new Date()).toISOString()
+    });
   }
   async tmuxPaneExists(paneId) {
     try {
@@ -1529,15 +1736,28 @@ var TmuxOrchestratorService = class {
       delegatedPrompt,
       resumeProviderSession
     );
-    if (executionSession.status === "running" && executionSession.activeJobId) {
+    const quotaPreparedJob = await this.deferCodexJobIfNeeded(
+      executionSession,
+      preparedJob
+    );
+    const runnableJob = quotaPreparedJob ?? preparedJob;
+    if (runnableJob.deferredUntil && Date.parse(runnableJob.deferredUntil) > Date.now()) {
       await updateOrchestratorSession(this.workspace, session.sessionId, {
-        lastJobId: preparedJob.jobId,
+        activeJobId: executionSession.activeJobId,
+        lastJobId: runnableJob.jobId,
         status: "running"
       });
-      return { job: preparedJob, systemNotice };
+      return { job: runnableJob, systemNotice };
     }
-    await this.startPreparedJob(executionSession, preparedJob);
-    return { job: preparedJob, systemNotice };
+    if (executionSession.status === "running" && executionSession.activeJobId) {
+      await updateOrchestratorSession(this.workspace, session.sessionId, {
+        lastJobId: runnableJob.jobId,
+        status: "running"
+      });
+      return { job: runnableJob, systemNotice };
+    }
+    await this.startPreparedJob(executionSession, runnableJob);
+    return { job: runnableJob, systemNotice };
   }
   async prepareJobArtifacts(session, job, prompt, resumeProviderSession) {
     const effectivePrompt = buildPromptWithAttachmentContext(
@@ -2074,6 +2294,7 @@ function buildGeminiCommand(input) {
   )}`;
 }
 function buildCodexCommand(input) {
+  const modelFlag = input.model === "auto" ? "" : ` --model ${shellQuote(input.model)}`;
   if (input.providerSessionId) {
     if (input.promptMode === "file" && !input.promptPath) {
       throw new Error("Prompt file mode requires a promptPath.");
@@ -2083,7 +2304,7 @@ function buildCodexCommand(input) {
       `Task file: ${input.promptPath}`,
       `Project purpose: ${input.projectPurpose}`
     ].join("\n") : input.prompt;
-    return `codex exec resume --model ${shellQuote(input.model)} --dangerously-bypass-approvals-and-sandbox ${shellQuote(
+    return `codex exec resume${modelFlag} --dangerously-bypass-approvals-and-sandbox ${shellQuote(
       input.providerSessionId
     )} ${shellQuote(prompt)}`;
   }
@@ -2091,11 +2312,11 @@ function buildCodexCommand(input) {
     if (!input.promptPath) {
       throw new Error("Prompt file mode requires a promptPath.");
     }
-    return `codex exec --model ${shellQuote(input.model)} --dangerously-bypass-approvals-and-sandbox --json - < ${shellQuote(
+    return `codex exec${modelFlag} --dangerously-bypass-approvals-and-sandbox --json - < ${shellQuote(
       input.promptPath
     )}`;
   }
-  return `codex exec --model ${shellQuote(input.model)} --dangerously-bypass-approvals-and-sandbox --json ${shellQuote(
+  return `codex exec${modelFlag} --dangerously-bypass-approvals-and-sandbox --json ${shellQuote(
     input.prompt
   )}`;
 }
@@ -2569,6 +2790,8 @@ var COMMAND_TIMEOUT_MS = 1e4;
 var ProviderCreditsService = class {
   cached;
   inFlight;
+  codexRateLimitsCache;
+  codexRateLimitsInFlight;
   async getDashboard(forceRefresh = false) {
     const now = Date.now();
     if (!forceRefresh && this.cached && this.cached.expiresAt > now) {
@@ -2582,6 +2805,20 @@ var ProviderCreditsService = class {
     });
     const value = await this.inFlight;
     this.cached = { expiresAt: now + CACHE_TTL_MS, value };
+    return value;
+  }
+  /** Read the raw included Codex windows for runtime scheduling decisions. */
+  async getCodexRateLimits(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && this.codexRateLimitsCache && this.codexRateLimitsCache.expiresAt > now) {
+      return this.codexRateLimitsCache.value;
+    }
+    if (this.codexRateLimitsInFlight) return this.codexRateLimitsInFlight;
+    this.codexRateLimitsInFlight = requestCodexRateLimits().then((result) => parseCodexRateLimits(result)).finally(() => {
+      this.codexRateLimitsInFlight = void 0;
+    });
+    const value = await this.codexRateLimitsInFlight;
+    this.codexRateLimitsCache = { expiresAt: now + CACHE_TTL_MS, value };
     return value;
   }
   async collectDashboard() {
@@ -2671,8 +2908,8 @@ var ProviderCreditsService = class {
 };
 async function collectCopilotCredits() {
   const response = await requestCopilotRpc("account.getQuota", {});
-  const result = asObject(response.result);
-  const snapshots = asObject(result?.quotaSnapshots);
+  const result = asObject2(response.result);
+  const snapshots = asObject2(result?.quotaSnapshots);
   if (!snapshots || Object.keys(snapshots).length === 0) {
     throw new Error("Copilot returned no quota snapshots.");
   }
@@ -2694,13 +2931,7 @@ async function collectCopilotCredits() {
 }
 async function collectCodexCredits() {
   const result = await requestCodexRateLimits();
-  const primarySnapshot = asObject(result.rateLimits);
-  const byId = asObject(result.rateLimitsByLimitId);
-  const snapshots = primarySnapshot ? [primarySnapshot] : Object.values(byId ?? {}).map((value) => value);
-  if (snapshots.length === 0) {
-    throw new Error("Codex returned no rate-limit snapshots.");
-  }
-  const snapshot = snapshots[0];
+  const snapshot = parseCodexRateLimits(result);
   if (!snapshot) {
     throw new Error("Codex returned no rate-limit snapshots.");
   }
@@ -2720,7 +2951,7 @@ async function collectCodexCredits() {
       detail: "Separate from the included plan rate limit."
     });
   }
-  const resetCredits = asObject(result.rateLimitResetCredits);
+  const resetCredits = asObject2(result.rateLimitResetCredits);
   const availableResets = asFiniteNumber(resetCredits?.availableCount);
   if (availableResets && availableResets > 0) {
     metrics.push({
@@ -2907,7 +3138,7 @@ function requestCodexRateLimits() {
               }
               clearTimeout(timer);
               child.kill();
-              resolve(asObject(message.result) ?? {});
+              resolve(asObject2(message.result) ?? {});
               return;
             }
           } catch (error) {
@@ -2986,7 +3217,7 @@ function providerErrorFallback(definition, checkedAt) {
     checkedAt
   };
 }
-function asObject(value) {
+function asObject2(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : void 0;
 }
 function asFiniteNumber(value) {
@@ -3070,6 +3301,7 @@ var OrchestratorScheduleService = class {
     this.busy = true;
     let schedules = [];
     try {
+      await this.orchestrator.reconcileDeferredJobs?.();
       schedules = await listOrchestratorSchedules2(this.workspace);
       const now = DateTime.utc();
       for (const schedule of schedules) {
@@ -3325,8 +3557,14 @@ var defaultProjectPath = process.cwd();
 var ORCHESTRATOR_TERMINAL_PAGE_LINE_LIMIT = 2e3;
 var ORCHESTRATOR_STATE_FILENAME = "ORCHESTRATOR.json";
 var ORCHESTRATOR_TERMINAL_LOG_FILENAME = "pane.log";
-var orchestrator = new TmuxOrchestratorService(workspace, defaultProjectPath);
 var providerCredits = new ProviderCreditsService();
+var orchestrator = new TmuxOrchestratorService(
+  workspace,
+  defaultProjectPath,
+  void 0,
+  void 0,
+  (forceRefresh) => providerCredits.getCodexRateLimits(forceRefresh)
+);
 var scheduleService = new OrchestratorScheduleService(
   workspace,
   orchestrator

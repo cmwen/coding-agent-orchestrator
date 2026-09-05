@@ -78,6 +78,16 @@ describe("OrchestratorPane", () => {
                 supportsExecutionMode: true,
               },
             },
+            {
+              id: "codex",
+              displayName: "OpenAI Codex CLI",
+              description: "Uses the installed Codex CLI.",
+              capabilities: {
+                supportsCustomAgents: false,
+                supportsExecutionMode: false,
+                supportsProviderSessionResume: true,
+              },
+            },
           ],
           tmuxSessionName: "coding-agent-orchestrator-orchestrator",
         }}
@@ -93,6 +103,12 @@ describe("OrchestratorPane", () => {
             displayName: "Claude Sonnet 4.6",
             runtimeProvider: "copilot",
             provider: "Anthropic",
+            supportedReasoningEfforts: [],
+          },
+          {
+            id: "auto",
+            displayName: "Auto (Codex chooses)",
+            runtimeProvider: "codex",
             supportedReasoningEfforts: [],
           },
         ]}
@@ -122,6 +138,12 @@ describe("OrchestratorPane", () => {
       screen.getByLabelText("Initial prompt"),
       "Investigate the broken redirect flow."
     );
+    const newSessionProvider = screen.getAllByRole(
+      "combobox"
+    )[0] as HTMLSelectElement;
+    await user.selectOptions(newSessionProvider, "codex");
+    expect(screen.getByDisplayValue("Auto (Codex chooses)")).toBeTruthy();
+    await user.selectOptions(newSessionProvider, "copilot");
     await user.selectOptions(
       screen.getByDisplayValue("GPT-5"),
       "claude-sonnet-4.6"
@@ -2062,7 +2084,10 @@ describe("OrchestratorPane", () => {
               promptPreview: "Draft the release note update",
               promptMode: "inline",
               status: "queued",
+              providerSessionId: "codex-thread-123",
               submittedAt: "2026-03-20T12:04:00Z",
+              deferredUntil: "2026-03-20T17:00:00Z",
+              deferReason: "Codex five-hour allowance is exhausted.",
               jobDirectory: "/tmp/session/delegations/job-3",
             },
             {
@@ -2148,6 +2173,12 @@ describe("OrchestratorPane", () => {
     expect(
       queuePanelContent.getByText("Draft the release note update")
     ).toBeTruthy();
+    expect(queuePanelContent.getByText("Waiting for quota")).toBeTruthy();
+    expect(
+      queuePanelContent.getAllByText(
+        "Resumes the same Codex session automatically when allowance returns."
+      )
+    ).toHaveLength(2);
   });
 
   it("shows terminal and queue as separate workspace views on desktop", async () => {

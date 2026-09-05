@@ -70,6 +70,10 @@ export class OrchestratorScheduleService {
     this.busy = true;
     let schedules: OrchestratorSchedule[] = [];
     try {
+      // This also advances Codex jobs that were persisted while the account's
+      // five-hour or weekly included window was exhausted, even with no SSE
+      // client connected to the session.
+      await this.orchestrator.reconcileDeferredJobs?.();
       schedules = await listOrchestratorSchedules(this.workspace);
       const now = DateTime.utc();
       for (const schedule of schedules) {

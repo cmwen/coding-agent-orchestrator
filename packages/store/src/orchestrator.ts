@@ -406,6 +406,24 @@ export async function writeOrchestratorJobCompletion(
   );
 }
 
+/** Remove a completion marker when a provider-limited job is safely requeued. */
+export async function clearOrchestratorJobCompletion(
+  workspace: OrchestratorWorkspace,
+  sessionId: string,
+  jobId: string
+): Promise<void> {
+  const jobPath = await findOrchestratorJobPath(workspace, sessionId, jobId);
+  if (!jobPath) {
+    throw new Error(
+      `Cannot clear completion for missing job ${jobId} for ${sessionId}`
+    );
+  }
+  await fs.rm(
+    path.join(path.dirname(jobPath), ORCHESTRATOR_JOB_DONE_FILENAME),
+    { force: true }
+  );
+}
+
 export async function listOrchestratorSchedules(
   workspace: OrchestratorWorkspace,
   options?: { sessionId?: string }

@@ -1403,6 +1403,60 @@ p {
   border-color: color-mix(in srgb, var(--primary-to) 35%, var(--border-soft));
 }
 
+.provider-credit-card-codex {
+  gap: 0.95rem;
+}
+
+.codex-quota-overview {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.8rem 0.85rem;
+  border: 1px solid
+    color-mix(in srgb, var(--primary-to) 24%, var(--border-soft));
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--primary-to) 7%, var(--card-bg));
+}
+
+.codex-quota-overview-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.codex-quota-overview-copy {
+  margin: 0;
+  color: var(--text-subtle);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.codex-quota-state {
+  color: var(--primary-to);
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.codex-quota-state.is-waiting {
+  color: var(--warning-text);
+}
+
+.codex-next-safe-prompt {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding-top: 0.25rem;
+  color: var(--text-primary);
+  font-size: 0.82rem;
+}
+
+.codex-next-safe-prompt time {
+  color: var(--warning-text);
+  text-align: right;
+}
+
 .provider-credit-plan {
   display: inline-flex;
   margin-top: 0.35rem;
@@ -1467,6 +1521,11 @@ p {
 .provider-credit-metric-heading strong {
   color: var(--text-primary);
   text-align: right;
+}
+
+.provider-credit-card-codex .provider-credit-metric-heading span {
+  color: var(--text-primary);
+  font-weight: 650;
 }
 
 .provider-credit-progress {
@@ -2463,6 +2522,23 @@ p {
 
 .orchestrator-job-item-queued {
   border-style: dashed;
+}
+
+.orchestrator-job-item-quota-deferred {
+  border-color: color-mix(in srgb, var(--warning-text) 48%, var(--border-soft));
+  background: color-mix(in srgb, var(--warning-text) 7%, var(--card-muted));
+}
+
+.quota-deferred-chip {
+  border-color: color-mix(in srgb, var(--warning-text) 40%, var(--border-soft));
+  background: color-mix(in srgb, var(--warning-text) 14%, transparent);
+  color: var(--warning-text);
+}
+
+.quota-deferred-note {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--warning-text);
 }
 
 .orchestrator-job-item-failed {

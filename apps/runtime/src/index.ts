@@ -53,8 +53,14 @@ const defaultProjectPath = process.cwd();
 const ORCHESTRATOR_TERMINAL_PAGE_LINE_LIMIT = 2_000;
 const ORCHESTRATOR_STATE_FILENAME = "ORCHESTRATOR.json";
 const ORCHESTRATOR_TERMINAL_LOG_FILENAME = "pane.log";
-const orchestrator = new TmuxOrchestratorService(workspace, defaultProjectPath);
 const providerCredits = new ProviderCreditsService();
+const orchestrator = new TmuxOrchestratorService(
+  workspace,
+  defaultProjectPath,
+  undefined,
+  undefined,
+  (forceRefresh) => providerCredits.getCodexRateLimits(forceRefresh)
+);
 const scheduleService = new OrchestratorScheduleService(
   workspace,
   orchestrator
